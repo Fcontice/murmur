@@ -1,0 +1,12 @@
+node_modules/
+out/
+dist/
+resources/helper/
+helper/**/bin/
+helper/**/obj/
+models/
+*.log
+.env
+resources/llama/
+resources/icon.png
+build/icon.png

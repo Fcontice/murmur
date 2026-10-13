@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; media-src 'self' blob:; connect-src 'self' ws://localhost:*" />
+    <title>Murmur</title>
+    <link rel="stylesheet" href="./pill/pill.css" />
+  </head>
+  <body>
+    <div id="pill" class="pill" data-phase="idle" data-mode="dictate">
+      <div class="idle-dot" aria-hidden="true"></div>
+      <span class="hint"></span>
+      <button class="icon-button" data-action="cancel" title="Cancel (Esc)" aria-label="Cancel dictation">
+        <svg viewBox="0 0 16 16" width="12" height="12"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg>
+      </button>
+      <span class="mode-label">Command</span>
+      <div class="bars" aria-hidden="true"></div>
+      <div class="dots" aria-hidden="true"><i></i><i></i><i></i></div>
+      <button class="icon-button stop" data-action="finish" title="Finish and insert" aria-label="Finish dictation">
+        <svg viewBox="0 0 16 16" width="10" height="10"><rect x="3" y="3" width="10" height="10" rx="2" fill="currentColor" /></svg>
+      </button>
+      <span class="notice" role="status"></span>
+    </div>
+    <script type="module" src="./pill/main.ts"></script>
+  </body>
+</html>

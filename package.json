@@ -1,0 +1,70 @@
+{
+  "name": "murmur",
+  "productName": "Murmur",
+  "version": "0.1.0",
+  "description": "Local voice dictation that writes for you in any app",
+  "private": true,
+  "main": "out/main/index.js",
+  "author": "fcontice",
+  "license": "UNLICENSED",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "test": "vitest run",
+    "test:prompts": "vitest run --config vitest.eval.config.ts",
+    "test:hook": "node scripts/helper-hook-test.cjs",
+    "helper:build": "dotnet publish helper/Murmur.Helper/Murmur.Helper.csproj -c Release -r win-x64 --self-contained true -o resources/helper --nologo -v q",
+    "resources": "npm run helper:build && node scripts/fetch-llama.cjs && node scripts/make-icon.cjs",
+    "dist": "npm run resources && electron-vite build && electron-builder --win --publish never"
+  },
+  "build": {
+    "appId": "com.fcontice.murmur",
+    "productName": "Murmur",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "out/**",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/sherpa-onnx-node/**",
+      "node_modules/sherpa-onnx-win-x64/**"
+    ],
+    "extraResources": [
+      { "from": "resources/helper", "to": "helper" },
+      { "from": "resources/llama", "to": "llama" },
+      { "from": "resources/icon.png", "to": "icon.png" }
+    ],
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "deleteAppDataOnUninstall": false
+    }
+  },
+  "devDependencies": {
+    "@swc/core": "^1.16.18",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^5.2.0",
+    "electron": "^44.7.1",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^5.0.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "typescript": "5.9",
+    "vite": "^7.3.7",
+    "vitest": "^3.2.7"
+  },
+  "dependencies": {
+    "sherpa-onnx-node": "^1.13.8"
+  }
+}

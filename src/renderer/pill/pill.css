@@ -1,0 +1,136 @@
+:root {
+  --surface: rgba(14, 14, 16, 0.94);
+  --border: rgba(255, 255, 255, 0.12);
+  --text: #ededf0;
+  --muted: #8b8b94;
+  --accent: #7c8cff;
+  --command: #f5a524;
+  --error: #ff6b6b;
+  font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+}
+
+body {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 6px;
+}
+
+.pill {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+  font-size: 12.5px;
+  line-height: 1.35;
+  transition: height 160ms ease, padding 160ms ease, opacity 160ms ease, border-color 160ms ease;
+}
+
+.pill > * { display: none; }
+
+/* Idle: a small handle that explains itself on hover. */
+.pill[data-phase='idle'] {
+  height: 10px;
+  padding: 0 16px;
+  opacity: 0.55;
+  box-shadow: none;
+}
+.pill[data-phase='idle'][data-hidden='true'] { opacity: 0; pointer-events: none; }
+.pill[data-phase='idle'] .idle-dot { display: block; width: 18px; height: 2px; border-radius: 2px; background: var(--muted); }
+.pill[data-phase='idle']:hover { height: 32px; padding: 0 14px; opacity: 1; cursor: pointer; }
+.pill[data-phase='idle']:hover .idle-dot { display: none; }
+.pill[data-phase='idle']:hover .hint { display: block; color: var(--muted); white-space: nowrap; }
+.hint b { color: var(--text); font-weight: 600; }
+
+.pill[data-phase='starting'] .dots,
+.pill[data-phase='processing'] .dots { display: flex; }
+
+.pill[data-phase='listening'] .bars { display: flex; }
+.pill[data-phase='listening'][data-locked='true'] .icon-button { display: grid; }
+.pill[data-mode='command'][data-phase='listening'] .mode-label,
+.pill[data-mode='command'][data-phase='processing'] .mode-label { display: block; }
+.pill[data-mode='command'] { border-color: color-mix(in srgb, var(--command) 55%, transparent); }
+
+.mode-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--command);
+}
+
+.bars {
+  align-items: center;
+  gap: 3px;
+  height: 22px;
+}
+.bars i {
+  width: 3px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  transition: height 70ms linear;
+}
+.pill[data-mode='command'] .bars i { background: var(--command); }
+
+.dots { gap: 5px; align-items: center; height: 22px; padding: 0 6px; }
+.dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--muted);
+  animation: pulse 1s ease-in-out infinite;
+}
+.dots i:nth-child(2) { animation-delay: 0.15s; }
+.dots i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes pulse {
+  0%, 100% { opacity: 0.3; transform: translateY(0); }
+  40% { opacity: 1; transform: translateY(-2px); }
+}
+
+.icon-button {
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  cursor: pointer;
+}
+.icon-button:hover { background: rgba(255, 255, 255, 0.18); }
+.icon-button.stop { background: var(--error); color: #fff; }
+.icon-button.stop:hover { background: #ff8585; }
+
+.pill[data-phase='notice'] {
+  height: auto;
+  min-height: 36px;
+  max-width: 430px;
+  padding: 9px 16px;
+  border-radius: 14px;
+}
+.pill[data-phase='notice'] .notice { display: block; text-align: center; }
+.pill[data-phase='notice'][data-kind='error'] { border-color: color-mix(in srgb, var(--error) 60%, transparent); }
+
+@media (prefers-reduced-motion: reduce) {
+  .pill, .bars i { transition: none; }
+  .dots i { animation: none; opacity: 0.8; }
+}
