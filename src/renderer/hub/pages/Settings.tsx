@@ -18,7 +18,7 @@ interface Props {
 const SHORTCUTS: Array<{ action: ShortcutAction; title: string; description: string }> = [
   { action: 'ptt', title: 'Dictate', description: 'Hold to talk, release to insert. Double-tap to lock.' },
   { action: 'handsFree', title: 'Hands-free', description: 'Press once to start, again to finish.' },
-  { action: 'command', title: 'Command mode', description: 'Hold and say how to change the selected text.' },
+  { action: 'command', title: 'Command mode', description: 'Hold and say what to do: edit the selection, open an app or site, or search the web.' },
   { action: 'pasteLast', title: 'Paste last dictation', description: 'Inserts the most recent result again.' },
   { action: 'cancel', title: 'Cancel', description: 'Only active while recording.' },
 ]

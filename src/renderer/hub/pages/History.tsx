@@ -19,6 +19,9 @@ function Entry({ entry, onDelete }: { entry: HistoryEntry; onDelete: () => void 
   const [open, setOpen] = useState(false)
   const [copied, setCopied] = useState(false)
   const text = entry.finalText || entry.rawText
+  // A failed command that pasted text fails with focus_changed instead, so only these mean an app or site did not open.
+  const openFailed = entry.status === 'failed' && (entry.error === 'launch_failed' || entry.error === 'open_failed')
+  const action = entry.status === 'action' || openFailed
 
   const copy = async () => {
     await api.copyText(text)
@@ -33,6 +36,8 @@ function Entry({ entry, onDelete }: { entry: HistoryEntry; onDelete: () => void 
         {entry.appName && <span> · {entry.appName}</span>}
         {entry.mode === 'command' && <span className="badge warn">Command</span>}
         {entry.status === 'copied' && <span className="badge bad">Not inserted, copied instead</span>}
+        {entry.status === 'action' && <span className="badge">Action</span>}
+        {openFailed && <span className="badge bad">Could not open</span>}
         <span className="list-actions">
           <button type="button" className="link" onClick={() => setOpen(!open)}>
             {open ? 'Hide details' : 'Details'}
@@ -51,8 +56,8 @@ function Entry({ entry, onDelete }: { entry: HistoryEntry; onDelete: () => void 
           <div className="details-label">What was heard</div>
           <div className="details-text">{entry.rawText}</div>
           <div className="details-label">
-            {(entry.durationMs / 1000).toFixed(1)} s of speech · {entry.wordCount} words · transcribed in {entry.asrMs} ms
-            {entry.usedLlm ? ` · cleaned up in ${entry.llmMs} ms` : ' · basic clean-up'}
+            {(entry.durationMs / 1000).toFixed(1)} s of speech{action ? '' : ` · ${entry.wordCount} words`} · transcribed in {entry.asrMs} ms
+            {action ? '' : entry.usedLlm ? ` · cleaned up in ${entry.llmMs} ms` : ' · basic clean-up'}
           </div>
         </div>
       )}

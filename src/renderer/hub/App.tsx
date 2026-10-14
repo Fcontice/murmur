@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useModels, useSettings, useStatus } from './hooks'
+import { Commands } from './pages/Commands'
 import { Dictionary } from './pages/Dictionary'
 import { History } from './pages/History'
 import { Home } from './pages/Home'
@@ -13,6 +14,7 @@ const PAGES = [
   { id: 'history', label: 'History' },
   { id: 'dictionary', label: 'Dictionary' },
   { id: 'snippets', label: 'Snippets' },
+  { id: 'commands', label: 'Commands' },
   { id: 'style', label: 'Style' },
   { id: 'settings', label: 'Settings' },
 ] as const
@@ -55,6 +57,7 @@ export function App() {
         {page === 'history' && <History />}
         {page === 'dictionary' && <Dictionary />}
         {page === 'snippets' && <Snippets />}
+        {page === 'commands' && <Commands settings={settings} update={update} />}
         {page === 'style' && <Style settings={settings} update={update} status={status} />}
         {page === 'settings' && <SettingsPage settings={settings} update={update} status={status} models={models} />}
       </main>
