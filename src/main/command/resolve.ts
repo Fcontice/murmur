@@ -12,14 +12,17 @@ const TLDS = new Set(
   ('com net org io dev app ai co me edu gov info biz tv xyz gg so to us uk ca de fr es it nl se no fi dk pl ch at be ie au nz ' +
     'in jp kr cn br mx eu ly sh fm tech site online store blog news').split(' '),
 )
-const NOISE_WORDS = new Set(['my', 'the', 'app', 'application', 'program', 'website', 'site'])
+/** "website" is not here: the doc rule decides whether it names a "… website" entry. */
+const NOISE_WORDS = new Set(['my', 'the', 'app', 'application', 'program', 'site'])
 /** Small words that appear inside many names; alone they name nothing. */
 const STOPWORDS = new Set(['on', 'to', 'for', 'of', 'in', 'at', 'by', 'with', 'and', 'or', 'a', 'an', 'is', 'it'])
 const UNINSTALLER = /\buninstall(?:er)?\b/i
+/** Shortcuts that run a setup script, not the app. */
+const INSTALLER = /^install\b/i
 /** Help and doc entries sit next to the real app; pick one only when it was asked for by name. */
-const DOC_ENTRY = /\b(documentation|docs|manuals?|faqs?|readme|release notes|revision history|website|on the web|example scripts|help)\b/i
-/** Spoken shorthand that shares no letters in order with the app's name. */
-const ALIASES: Record<string, string> = { cmd: 'Command Prompt' }
+const DOC_ENTRY = /\b(documentation|docs?|manuals?|faqs?|readme|release notes|revision history|website|on the web|example scripts|help)\b/i
+/** Spoken shorthand that shares no letters in order with the app's name, or names a different app first. */
+const ALIASES: Record<string, string> = { cmd: 'Command Prompt', 'to do': 'Microsoft To Do' }
 /** A wrong app match launches the wrong program, so a lone short word must name a whole word. */
 const MIN_LONE_PREFIX = 3
 /** "vs" or "vsc" read as initials; longer runs of letters are real words. */
@@ -28,6 +31,8 @@ const MAX_ACRONYM = 4
 const words = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().split(' ').filter(Boolean)
 const meaningful = (text: string) => words(text).filter((word) => !NOISE_WORDS.has(word))
 const containsRun = (haystack: string[], needle: string[]) => ` ${haystack.join(' ')} `.includes(` ${needle.join(' ')} `)
+/** "faq" asks for "FAQs" and "doc" for "Docs"; only the doc-entry check uses this. */
+const singular = (list: string[]) => list.map((word) => word.replace(/s$/, ''))
 
 /** "github dot com" becomes an https URL; a spoken http(s) URL keeps its scheme; anything else is null. */
 export function asDomainUrl(spoken: string): string | null {
@@ -108,13 +113,13 @@ export function findApp(spoken: string, apps: InstalledApp[]): InstalledApp | nu
 
   let best: { app: InstalledApp; score: number } | null = null
   for (const app of apps) {
-    if (UNINSTALLER.test(app.name)) continue
+    if (UNINSTALLER.test(app.name) || INSTALLER.test(app.name)) continue
     const name = words(app.name)
     const doc = DOC_ENTRY.exec(app.name)
     // "python docs" may open the docs; "docs" alone names no particular app.
     if (doc) {
       const docWords = words(doc[1]!)
-      if (!containsRun(target, docWords) || target.length <= docWords.length) continue
+      if (!containsRun(singular(target), singular(docWords)) || target.length <= docWords.length) continue
     }
     const points = score(target, name)
     if (points === 0) continue

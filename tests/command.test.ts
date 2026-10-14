@@ -266,6 +266,31 @@ describe('findApp', () => {
     it('reads "cmd" as Command Prompt only when it is installed', () => {
       expect(findApp('cmd', REAL.filter((entry) => entry.name !== 'Command Prompt'))?.name).toBe('Git CMD')
     })
+
+    it('never picks an installer shortcut', () => {
+      const apps = [...REAL, app('Install Additional Tools for Node.js')]
+      expect(findApp('install', apps)).toBeNull()
+      expect(findApp('install additional tools', apps)).toBeNull()
+      expect(findApp('node', apps)?.name).toBe('Node.js')
+    })
+
+    it('lets the doc rule decide "website"', () => {
+      expect(findApp('node website', REAL)?.name).toBe('Node.js website')
+      expect(findApp('website', REAL)).toBeNull()
+    })
+
+    it('treats singular and plural doc words alike', () => {
+      const apps = [...REAL, app('Git FAQs')]
+      expect(findApp('git faq', apps)?.name).toBe('Git FAQs')
+      expect(findApp('git faqs', apps)?.name).toBe('Git FAQs')
+      expect(findApp('faq', apps)).toBeNull()
+      expect(findApp('python doc', apps)?.name).toBe('Python 3.13 Module Docs (64-bit)')
+    })
+
+    it('reads "to do" as Microsoft To Do only when it is installed', () => {
+      expect(findApp('to do', [...REAL, app('Microsoft To Do')])?.name).toBe('Microsoft To Do')
+      expect(findApp('to do', REAL)?.name).toBe('Click to Do')
+    })
   })
 })
 
