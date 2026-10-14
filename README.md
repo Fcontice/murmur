@@ -9,7 +9,7 @@ Hold **Ctrl + Win**, speak, release. The text appears at the cursor.
 - **Push to talk** in any app. Double-tap, or press **Ctrl + Win + Space**, to stay on hands-free.
 - **AI clean-up**: removes ums and repeats, applies "no, actually Wednesday" corrections, fixes punctuation. Four strengths from verbatim to heavy rewrite.
 - **Styles per kind of app**: formal, casual or very casual for personal chat, work chat, email and everything else.
-- **Command mode** (**Ctrl + Win + Alt**): select text and say how to change it, or say what to write.
+- **Command mode** (**Ctrl + Win + Alt**): select text and say how to change it, or say what to write. With nothing selected, the local model can use the text in the window as reference ("reply to this", "summarize this"). "Open spotify" or "open github dot com" opens a saved site, an installed app or a domain; "search for electron release notes" searches the web with the engine you choose. Saved commands on the Commands page run a stored instruction when you say their name, such as "spanish" or "bulletize".
 - **Dictionary** for names and jargon, including how they get misheard. **Snippets** that expand a spoken phrase into saved text.
 - **Voice commands**: "new line", "new paragraph", and "press enter" at the end to send.
 - **Smart spacing**: reads the text around the cursor to add the right spaces and continue a sentence in lower case.
@@ -18,6 +18,8 @@ Hold **Ctrl + Win**, speak, release. The text appears at the cursor.
 ## Privacy
 
 Audio and text stay on the computer by default. Speech is transcribed by a local model and cleaned up by a local language model served on `127.0.0.1` with a per-run key. Nothing is uploaded unless you point a provider at a custom server in Settings. The app makes network requests only to download models you ask for.
+
+For command mode, the focused window's visible text is read on demand when nothing is selected. It goes only to the built-in local model, never to a custom server, and is never stored or logged. Opening a site or searching the web hands the URL to your default browser.
 
 ## Install
 
@@ -44,6 +46,7 @@ npm run dev           # run with hot reload
 npm test              # unit tests
 npm run test:prompts  # clean-up prompts against the installed local model
 npm run test:hook     # global key hook against the real OS (modifier keys only)
+npm run test:helper   # helper app list, app launch and window text (opens Character Map briefly)
 npm run dist          # build the installer into dist/
 ```
 
@@ -61,7 +64,8 @@ The command-mode clips in `tests/fixtures` come from `powershell -File scripts/m
 | Speech | `src/main/asr` | sherpa-onnx in an Electron utility process |
 | Language model | `src/main/llm` | Bundled llama.cpp server as a child process, or any OpenAI-compatible endpoint |
 | Text pipeline | `src/main/text` | Clean-up, dictionary, snippets, spacing; pure functions |
-| Native helper | `helper/Murmur.Helper` | C#: global key hook, paste, focused-app context over stdin/stdout JSON |
+| Command actions | `src/main/command` | Command-mode routing, open-target resolution, installed-app catalogue |
+| Native helper | `helper/Murmur.Helper` | C#: global key hook, paste, focused-app context, app list and launch, window text over stdin/stdout JSON |
 | Pill | `src/renderer/pill` | Floating indicator; also captures the microphone |
 | Main window | `src/renderer/hub` | React UI |
 

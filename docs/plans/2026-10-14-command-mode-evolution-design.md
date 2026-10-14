@@ -73,3 +73,17 @@ URLs open through `shell.openExternal`, restricted to `http` and `https`. Apps l
 3. Helper smoke test: `listApps` returns real apps with IDs, `getWindowText` reads a known Murmur window within budget, and `launchApp` opens and then closes Notepad.
 4. End-to-end self-test (`MURMUR_SELFTEST`) with recorded clips for open, search, go to, a saved command and summarize. It asserts real effects (process launched, exact URL requested, text inserted into Murmur's own box) and saves screenshots. Paste steps keep the `requireForeground` guard.
 5. A packaged build installed over the current copy, the self-test re-run on the installed app, and a manual checklist for physical key presses.
+
+## Changes during implementation
+
+- No bare "search X" or "start X" triggers: both start too many ordinary sentences. Search is "search for", "look up" or "google"; open is "open", "open up", "launch", "go to" or "pull up".
+- Lookalike rules: an open target has at most 6 words and no clause words (a comma, a long "and", "then", "write", "make", "about"). Pronoun and filler targets ("open it", "open this up", "look up that") stay writing commands.
+- Spoken "dot" and "slash" are joined, so "github dot com slash murmur" opens `https://github.com/murmur`.
+- Domain detection needs a top-level domain from an allowlist, so file names like "next.js" or "notes.py" are not sites.
+- App matching was tuned on a probe of 210 real installed apps: whole-word matches beat prefix matches; documentation, help, installer and uninstaller entries are skipped unless asked for by name; "cmd" and "to do" are aliases for Command Prompt and Microsoft To Do.
+- Site names are keyed the same way as the resolver matches them, so a saved name always matches what is spoken.
+- Screen text is read only when a model can use it and nothing is selected, not on every command.
+- The screen budget is counted in estimated tokens (about 5,000) rather than 6,000 characters, and a selection over about 3,000 tokens is refused with a notice.
+- Prompt tags and forged labels ("The user's instruction:") in screen text and selections are neutralised before the prompt is built and restored in the output.
+- The end-to-end self-test runs only in a dev build and refuses to start without `MURMUR_USER_DATA`.
+- Known limit: Gemma 3 4B still obeys a short command at the end of the screen text. The eval keeps it as an expected failure; the impact is wrong typed text, not an action.
