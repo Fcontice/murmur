@@ -6,7 +6,7 @@ import { pcm16ToFloat32, peak, SAMPLE_RATE } from './asr/audio'
 import type { AsrService } from './asr/service'
 import type { Database } from './db'
 import type { Helper, HelperContext } from './helper'
-import { buildCommandRequest, tidyModelOutput } from './llm/prompts'
+import { buildCommandRequest, restoreTags, tidyModelOutput } from './llm/prompts'
 import type { LlmService } from './llm/service'
 import { logger } from './log'
 import { categorizeApp, isTerminal } from './text/apps'
@@ -361,7 +361,7 @@ export class DictationController extends EventEmitter<{ pill: [PillState]; histo
       const selection = textContext.selected || (await helper.copySelection())
       if (selection.length > MAX_COMMAND_SELECTION_CHARS) throw new Error('The selection is too long for command mode. Select a shorter passage.')
       const instruction = basicCleanup(raw, { voiceCommands: false, removeFillers: true })
-      text = tidyModelOutput(await llm.complete(buildCommandRequest({ instruction, selection, screenText: '', appName: app.name })))
+      text = restoreTags(tidyModelOutput(await llm.complete(buildCommandRequest({ instruction, selection, screenText: '', appName: app.name }))))
       if (!text) throw new Error('The model returned nothing. Try rephrasing the instruction.')
       usedLlm = true
       llmMs = this.now() - llmStarted
