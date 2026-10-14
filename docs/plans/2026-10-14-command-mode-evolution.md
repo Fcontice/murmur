@@ -116,6 +116,8 @@ git commit -m "Add command-mode types and the search URL setting"
 
 ### Task 2: Router (pure)
 
+> Revised after review: see commit "Tighten command routing for lookalikes, fillers and empty input"; the code in the repo is authoritative.
+
 **Files:**
 - Create: `src/main/command/router.ts`
 - Test: `tests/command.test.ts`
