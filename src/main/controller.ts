@@ -361,7 +361,7 @@ export class DictationController extends EventEmitter<{ pill: [PillState]; histo
       const selection = textContext.selected || (await helper.copySelection())
       if (selection.length > MAX_COMMAND_SELECTION_CHARS) throw new Error('The selection is too long for command mode. Select a shorter passage.')
       const instruction = basicCleanup(raw, { voiceCommands: false, removeFillers: true })
-      text = tidyModelOutput(await llm.complete(buildCommandRequest({ instruction, selection, appName: app.name })))
+      text = tidyModelOutput(await llm.complete(buildCommandRequest({ instruction, selection, screenText: '', appName: app.name })))
       if (!text) throw new Error('The model returned nothing. Try rephrasing the instruction.')
       usedLlm = true
       llmMs = this.now() - llmStarted

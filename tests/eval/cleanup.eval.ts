@@ -113,7 +113,7 @@ describe('command prompt', () => {
       { instruction: 'Write a two sentence out of office reply saying I am back on Monday.', selection: '' },
     ]
     for (const item of cases) {
-      const out = await complete(buildCommandRequest({ ...item, appName: 'Outlook' }))
+      const out = await complete(buildCommandRequest({ ...item, screenText: '', appName: 'Outlook' }))
       console.log(`[command] ${item.instruction}\n   out: ${JSON.stringify(out)}`)
       expect(out.length).toBeGreaterThan(0)
     }
