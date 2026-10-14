@@ -215,7 +215,7 @@ export class Helper extends EventEmitter<HelperEvents> {
       const reply = await this.request('getWindowText', { maxChars }, 2500)
       return {
         text: reply.ok && typeof reply.text === 'string' ? reply.text : '',
-        elapsedMs: Number(reply.elapsedMs ?? 0),
+        elapsedMs: typeof reply.elapsedMs === 'number' ? reply.elapsedMs : 0,
         source: String(reply.source ?? reply.error ?? ''),
       }
     } catch {

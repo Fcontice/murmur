@@ -27,17 +27,22 @@ export class AppCatalog {
     return this.pending ?? Promise.resolve([])
   }
 
-  /** Starts a read in the background so the first command does not wait for it. */
+  /**
+   * Starts a read in the background so the first command does not wait for it. Skips the retry delay, so calling it
+   * when the helper becomes ready recovers at once; it still reads only when the list is stale or was never loaded.
+   */
   warm(): void {
+    this.retryAt = -Infinity
     void this.apps()
   }
 
   private refresh(): void {
-    this.pending ??= this.listApps()
+    this.pending ??= Promise.resolve()
+      .then(() => this.listApps())
       .catch(() => null)
       .then((apps) => {
-        // A failed read keeps the last good list rather than forgetting every app.
-        if (apps) {
+        // A failed or empty read keeps the last good list rather than forgetting every app.
+        if (apps && apps.length > 0) {
           this.cached = apps
           this.fetchedAt = this.now()
         } else {

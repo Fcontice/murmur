@@ -375,6 +375,59 @@ describe('AppCatalog', () => {
     await catalog.apps()
     now += 5 * 60_000 + 1
     expect(await catalog.apps()).toEqual([app('Spotify')])
+    // Let the failed background refresh settle, then the old list must still be there.
+    await vi.waitFor(() => expect(listApps.mock.results[1]?.value).toBeDefined())
+    await listApps.mock.results[1]!.value
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(await catalog.apps()).toEqual([app('Spotify')])
+    now += 29_000
+    expect(await catalog.apps()).toEqual([app('Spotify')])
+    expect(listApps).toHaveBeenCalledTimes(2)
+  })
+
+  it('treats an empty list as a failed read', async () => {
+    let now = 0
+    const listApps = vi.fn().mockResolvedValueOnce([]).mockResolvedValueOnce([app('Spotify')]).mockResolvedValueOnce([])
+    const catalog = new AppCatalog(listApps, () => now)
+    expect(await catalog.apps()).toEqual([])
+    now += 1000
+    await catalog.apps()
+    expect(listApps).toHaveBeenCalledTimes(1)
+    now += 30_000
+    expect(await catalog.apps()).toEqual([app('Spotify')])
+    now += 5 * 60_000 + 1
+    expect(await catalog.apps()).toEqual([app('Spotify')])
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(await catalog.apps()).toEqual([app('Spotify')])
+    expect(listApps).toHaveBeenCalledTimes(3)
+  })
+
+  it('resolves to an empty list when listApps throws synchronously', async () => {
+    const listApps = vi.fn(() => {
+      throw new Error('boom')
+    })
+    const catalog = new AppCatalog(listApps, () => 0)
+    await expect(catalog.apps()).resolves.toEqual([])
+  })
+
+  it('lets warm() retry at once after a failed read', async () => {
+    let now = 0
+    const listApps = vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce([app('Spotify')])
+    const catalog = new AppCatalog(listApps, () => now)
+    expect(await catalog.apps()).toEqual([])
+    now += 1000
+    catalog.warm()
+    expect(await catalog.apps()).toEqual([app('Spotify')])
+    expect(listApps).toHaveBeenCalledTimes(2)
+  })
+
+  it('reads only once for warm() followed by apps()', async () => {
+    const listApps = vi.fn(async () => [app('Spotify')])
+    const catalog = new AppCatalog(listApps, () => 0)
+    catalog.warm()
+    expect(await catalog.apps()).toEqual([app('Spotify')])
+    catalog.warm()
+    expect(listApps).toHaveBeenCalledTimes(1)
   })
 
   it('resolves to an empty list when the first read throws', async () => {

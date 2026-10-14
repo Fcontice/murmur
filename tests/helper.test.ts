@@ -54,6 +54,11 @@ describe('Helper.getWindowText', () => {
     expect(await helper.getWindowText(4000)).toEqual({ text: '', elapsedMs: 3, source: 'elevated' })
   })
 
+  it('never reports a NaN elapsed time', async () => {
+    const { helper } = stubbed(async () => ({ ok: false, error: 'busy', elapsedMs: 'soon' }))
+    expect(await helper.getWindowText(4000)).toEqual({ text: '', elapsedMs: 0, source: 'busy' })
+  })
+
   it('is unavailable when the request itself fails', async () => {
     const { helper } = stubbed(async () => Promise.reject(new Error('Helper is not running')))
     expect(await helper.getWindowText(4000)).toEqual({ text: '', elapsedMs: 0, source: 'unavailable' })
