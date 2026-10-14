@@ -121,6 +121,12 @@ export function sameKeys(a: number[], b: number[]): boolean {
   return a.length === b.length && sortKeys(a).every((key, index) => key === sortKeys(b)[index])
 }
 
+/** Limits for saved commands and sites, shared by the database checks and the hub's inputs. */
+export const MAX_COMMAND_NAME = 40
+export const MAX_PROMPT = 1000
+export const MAX_SITE_NAME = 40
+export const MAX_URL = 2000
+
 export const SEARCH_ENGINES: Array<{ name: string; url: string }> = [
   { name: 'Google', url: 'https://www.google.com/search?q={query}' },
   { name: 'DuckDuckGo', url: 'https://duckduckgo.com/?q={query}' },

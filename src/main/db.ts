@@ -2,13 +2,10 @@ import { randomUUID } from 'node:crypto'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
+import { MAX_COMMAND_NAME, MAX_PROMPT, MAX_SITE_NAME, MAX_URL } from '@shared/settings'
 import type { DictionaryEntry, HistoryEntry, SavedCommand, Site, Snippet, Stats } from '@shared/types'
 import { siteKey } from './command/resolve'
 import { commandKey, reservedNameProblem } from './command/router'
-
-const MAX_NAME = 40
-const MAX_PROMPT = 1000
-const MAX_URL = 2000
 
 /** Append only: each entry runs once, in order, on the user's existing file. */
 export const MIGRATIONS: readonly string[] = [
@@ -332,7 +329,7 @@ export class Database {
     const prompt = input.prompt.trim()
     if (!name) throw new Error('Enter the name you will say.')
     if (!prompt) throw new Error('Enter the instruction to run.')
-    if (name.length > MAX_NAME) throw new Error(`Keep the name to ${MAX_NAME} characters or fewer.`)
+    if (name.length > MAX_COMMAND_NAME) throw new Error(`Keep the name to ${MAX_COMMAND_NAME} characters or fewer.`)
     if (prompt.length > MAX_PROMPT) throw new Error(`Keep the instruction to ${MAX_PROMPT} characters or fewer.`)
     const reserved = reservedNameProblem(name)
     if (reserved) throw new Error(reserved)
@@ -369,7 +366,7 @@ export class Database {
   saveSite(input: { id?: string; name: string; url: string }): Site {
     const name = input.name.trim()
     if (!name) throw new Error('Enter the name you will say.')
-    if (name.length > MAX_NAME) throw new Error(`Keep the name to ${MAX_NAME} characters or fewer.`)
+    if (name.length > MAX_SITE_NAME) throw new Error(`Keep the name to ${MAX_SITE_NAME} characters or fewer.`)
     const url = normaliseSiteUrl(input.url)
     if (url.length > MAX_URL) throw new Error(`Keep the web address to ${MAX_URL} characters or fewer.`)
     // Compare the way the resolver matches, so "My Gmail" cannot hide behind "Gmail".

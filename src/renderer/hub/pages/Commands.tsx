@@ -1,11 +1,10 @@
-import { useEffect, useState, type FormEvent } from 'react'
-import { SEARCH_ENGINES } from '@shared/settings'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { MAX_COMMAND_NAME, MAX_PROMPT, MAX_SITE_NAME, MAX_URL, SEARCH_ENGINES } from '@shared/settings'
 import type { SavedCommand, Settings, Site } from '@shared/types'
 import { Empty, Keys, Row, Segmented } from '../components'
 import { errorMessage } from '../hooks'
 
 const api = window.murmur
-const MAX_PROMPT = 1000
 const CUSTOM = 'Custom'
 
 interface Props {
@@ -20,7 +19,7 @@ function Examples({ command }: { command?: SavedCommand }) {
     ['search for standing desks', 'Searches the web.'],
     ['reply to this', 'Writes a reply to what is selected or on screen.'],
   ]
-  if (command) examples.push([command.name, 'Runs your saved command.'])
+  if (command && !examples.some(([phrase]) => phrase.toLowerCase() === command.name.toLowerCase())) examples.push([command.name, 'Runs your saved command.'])
   return (
     <section className="section">
       <header>
@@ -39,6 +38,7 @@ function Examples({ command }: { command?: SavedCommand }) {
 }
 
 function SavedCommands({ commands, refresh }: { commands: SavedCommand[]; refresh: () => void }) {
+  const nameInput = useRef<HTMLInputElement>(null)
   const [editing, setEditing] = useState<string | null>(null)
   const [name, setName] = useState('')
   const [prompt, setPrompt] = useState('')
@@ -72,7 +72,7 @@ function SavedCommands({ commands, refresh }: { commands: SavedCommand[]; refres
       <form className="card form" onSubmit={(event) => void submit(event)}>
         <label>
           Name
-          <input className="input" value={name} maxLength={40} placeholder="Spanish" onChange={(event) => setName(event.target.value)} />
+          <input ref={nameInput} className="input" value={name} maxLength={MAX_COMMAND_NAME} placeholder="Spanish"onChange={(event) => setName(event.target.value)} />
         </label>
         <label>
           Instruction <span className="optional">{prompt.length}/{MAX_PROMPT}</span>
@@ -111,6 +111,7 @@ function SavedCommands({ commands, refresh }: { commands: SavedCommand[]; refres
                     setName(command.name)
                     setPrompt(command.prompt)
                     setError(null)
+                    nameInput.current?.focus()
                   }}
                 >
                   Edit
@@ -119,9 +120,13 @@ function SavedCommands({ commands, refresh }: { commands: SavedCommand[]; refres
                   type="button"
                   className="link danger"
                   onClick={async () => {
-                    await api.deleteCommand(command.id)
-                    if (editing === command.id) reset()
-                    refresh()
+                    try {
+                      await api.deleteCommand(command.id)
+                      if (editing === command.id) reset()
+                      refresh()
+                    } catch (problem) {
+                      setError(errorMessage(problem))
+                    }
                   }}
                 >
                   Delete
@@ -136,6 +141,7 @@ function SavedCommands({ commands, refresh }: { commands: SavedCommand[]; refres
 }
 
 function Sites() {
+  const nameInput = useRef<HTMLInputElement>(null)
   const [sites, setSites] = useState<Site[]>([])
   const [editing, setEditing] = useState<string | null>(null)
   const [name, setName] = useState('')
@@ -173,11 +179,11 @@ function Sites() {
       <form className="card form" onSubmit={(event) => void submit(event)}>
         <label>
           Name
-          <input className="input" value={name} maxLength={40} placeholder="Gmail" onChange={(event) => setName(event.target.value)} />
+          <input ref={nameInput} className="input" value={name} maxLength={MAX_SITE_NAME} placeholder="Gmail"onChange={(event) => setName(event.target.value)} />
         </label>
         <label>
           Address
-          <input className="input" value={url} placeholder="mail.google.com" onChange={(event) => setUrl(event.target.value)} />
+          <input className="input" value={url} maxLength={MAX_URL} placeholder="mail.google.com"onChange={(event) => setUrl(event.target.value)} />
         </label>
         {error && <div className="form-error">{error}</div>}
         <div className="form-actions">
@@ -211,6 +217,7 @@ function Sites() {
                     setName(site.name)
                     setUrl(site.url)
                     setError(null)
+                    nameInput.current?.focus()
                   }}
                 >
                   Edit
@@ -219,9 +226,13 @@ function Sites() {
                   type="button"
                   className="link danger"
                   onClick={async () => {
-                    await api.deleteSite(site.id)
-                    if (editing === site.id) reset()
-                    refresh()
+                    try {
+                      await api.deleteSite(site.id)
+                      if (editing === site.id) reset()
+                      refresh()
+                    } catch (problem) {
+                      setError(errorMessage(problem))
+                    }
                   }}
                 >
                   Delete
@@ -237,14 +248,20 @@ function Sites() {
 
 function WebSearch({ settings, update }: Props) {
   const preset = SEARCH_ENGINES.find((engine) => engine.url === settings.searchUrl)
-  const [custom, setCustom] = useState(!preset)
+  // True only after Custom is clicked and before a custom address is saved. Otherwise the saved setting decides.
+  const [custom, setCustom] = useState(false)
   const [draft, setDraft] = useState(preset ? '' : settings.searchUrl)
   const [error, setError] = useState<string | null>(null)
   const selected = custom || !preset ? CUSTOM : preset.name
 
+  useEffect(() => {
+    if (!SEARCH_ENGINES.some((engine) => engine.url === settings.searchUrl)) setDraft(settings.searchUrl)
+  }, [settings.searchUrl])
+
   const choose = async (choice: string) => {
     setError(null)
     if (choice === CUSTOM) {
+      if (preset) setDraft(preset.url)
       setCustom(true)
       return
     }
@@ -270,6 +287,7 @@ function WebSearch({ settings, update }: Props) {
       <div className="card">
         <Row title="Search with" description={selected !== CUSTOM && error ? <span className="form-error">{error}</span> : undefined}>
           <Segmented
+            label="Search with"
             value={selected}
             options={[...SEARCH_ENGINES.map((engine) => ({ value: engine.name, label: engine.name })), { value: CUSTOM, label: CUSTOM }]}
             onChange={(value) => void choose(value)}
@@ -297,6 +315,7 @@ function WebSearch({ settings, update }: Props) {
 export function Commands({ settings, update }: Props) {
   const [commands, setCommands] = useState<SavedCommand[]>([])
 
+  // Loaded here, not in SavedCommands, because the examples card also names the first saved command.
   const refresh = () => void api.listCommands().then(setCommands)
   useEffect(refresh, [])
 
