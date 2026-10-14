@@ -9,7 +9,7 @@ import { buildSearchUrl, resolveOpenTarget, type OpenTarget } from './command/re
 import { routeCommand, type CommandRoute } from './command/router'
 import type { Database } from './db'
 import type { Helper, HelperContext } from './helper'
-import { buildCommandRequest, restoreTags, tidyModelOutput } from './llm/prompts'
+import { buildCommandRequest, restoreTags, selectionFitsModel, tidyModelOutput } from './llm/prompts'
 import type { LlmService } from './llm/service'
 import { logger } from './log'
 import { categorizeApp, isTerminal } from './text/apps'
@@ -28,7 +28,6 @@ const SILENCE_PEAK = 0.003
 const CAPTURE_STOP_TIMEOUT_MS = 1200
 const NOTICE_MS = 4200
 const CONTEXT_CHARS = 600
-const MAX_COMMAND_SELECTION_CHARS = 12_000
 const SCREEN_CHARS = 6000
 const REMOTE_SCREEN_NOTICE = 'Screen text is only shared with the built-in model, so this command ran without it.'
 
@@ -424,7 +423,7 @@ export class DictationController extends EventEmitter<{ pill: [PillState]; histo
           const llmStarted = this.now()
           const selection = textContext.selected || (await helper.copySelection())
           if (session.cancelled) return
-          if (selection.length > MAX_COMMAND_SELECTION_CHARS) throw new Error('The selection is too long for command mode. Select a shorter passage.')
+          if (!selectionFitsModel(selection)) throw new Error('The selection is too long for command mode. Select a shorter passage.')
           let screenText = ''
           if (!selection.trim()) {
             if (settings.llmProvider === 'local') {
