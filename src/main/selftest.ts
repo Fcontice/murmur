@@ -52,9 +52,33 @@ function readWavPcm(file: string): Int16Array {
   return new Int16Array(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + (bytes.byteLength & ~1)))
 }
 
+async function processIds(image: string): Promise<Set<number>> {
+  const { execFile } = await import('node:child_process')
+  const out = await new Promise<string>((resolve) => execFile('tasklist', ['/FI', `IMAGENAME eq ${image}`, '/FO', 'CSV', '/NH'], (_e, stdout) => resolve(stdout ?? '')))
+  return new Set([...out.matchAll(/^"[^"]+","(\d+)"/gm)].map((match) => Number(match[1])))
+}
+
+/**
+ * Asks each process the test started to close (WM_CLOSE, never /F), repeating until it has gone: a close sent
+ * before the app has made its window reaches nothing. Returns the PIDs that would not close.
+ */
+async function closeProcesses(image: string, pids: number[]): Promise<number[]> {
+  const { execFile } = await import('node:child_process')
+  let running = pids
+  for (let attempt = 0; attempt < 20 && running.length > 0; attempt++) {
+    await Promise.all(running.map((pid) => new Promise<void>((resolve) => execFile('taskkill', ['/PID', String(pid)], () => resolve()))))
+    await sleep(250)
+    const now = await processIds(image)
+    running = running.filter((pid) => now.has(pid))
+  }
+  return running
+}
+
 export async function runSelfTest(context: SelfTestContext): Promise<void> {
   const { outDir, controller, helper, asr, llm, db, settings, pill } = context
   mkdirSync(outDir, { recursive: true })
+  // Lets UI Automation read the page text of our own window, which the screen-aware command step needs.
+  app.setAccessibilitySupportEnabled(true)
   const fixtures = join(app.getAppPath(), 'tests', 'fixtures')
   const results: StepResult[] = []
 
@@ -128,7 +152,7 @@ export async function runSelfTest(context: SelfTestContext): Promise<void> {
     await shot(hub, 'onboarding-microphone')
     settings.update({ onboarded: true })
     await sleep(500)
-    for (const page of ['Home', 'History', 'Dictionary', 'Snippets', 'Style', 'Settings']) {
+    for (const page of ['Home', 'History', 'Dictionary', 'Snippets', 'Commands', 'Style', 'Settings']) {
       await js(`[...document.querySelectorAll('.nav-item')].find((b) => b.textContent === '${page}').click()`)
       await sleep(400)
       await shot(hub, `hub-${page.toLowerCase()}`)
@@ -189,6 +213,81 @@ export async function runSelfTest(context: SelfTestContext): Promise<void> {
     return { before: original, after: text }
   })
 
+  const showPage = async (page: string) => {
+    await js(`[...document.querySelectorAll('.nav-item')].find((b) => b.textContent === '${page}').click()`)
+    await sleep(400)
+  }
+
+  /** Actions never paste; the empty "Try it" box only keeps the focus inside Murmur's own window. */
+  const commandClip = async (clip: string) => {
+    await showPage('Home')
+    await js(`(() => { const box = document.querySelector('.try'); box.value = ''; box.focus() })()`)
+    const urls: string[] = []
+    controller.urlOverride = (url) => urls.push(url)
+    try {
+      await dictate(clip, 'command')
+    } finally {
+      controller.urlOverride = null
+    }
+    return { urls, last: db.listHistory('', 1, 0)[0] }
+  }
+
+  await step('command: search for', async () => {
+    const { urls, last } = await commandClip('search')
+    if (urls[0] !== 'https://www.google.com/search?q=standing%20desks') throw new Error(`Unexpected URL ${JSON.stringify(urls)}; heard ${JSON.stringify(last?.rawText)}`)
+    return { url: urls[0], status: last?.status }
+  })
+
+  await step('command: go to a spoken domain', async () => {
+    const { urls, last } = await commandClip('goto')
+    if (urls[0] !== 'https://example.com') throw new Error(`Unexpected URL ${JSON.stringify(urls)}; heard ${JSON.stringify(last?.rawText)}`)
+    return { url: urls[0], status: last?.status }
+  })
+
+  await step('command: open an installed app', async () => {
+    const before = await processIds('charmap.exe')
+    const { urls, last } = await commandClip('open-charmap')
+    let mine: number[] = []
+    for (let attempt = 0; attempt < 20 && mine.length === 0; attempt++) {
+      await sleep(250)
+      mine = [...(await processIds('charmap.exe'))].filter((pid) => !before.has(pid))
+    }
+    const leftOpen = await closeProcesses('charmap.exe', mine)
+    if (urls.length > 0) throw new Error(`Searched instead of opening the app: ${JSON.stringify(urls)}; heard ${JSON.stringify(last?.rawText)}`)
+    if (last?.status !== 'action' || mine.length === 0) throw new Error(`Character Map did not open: ${JSON.stringify(last)}`)
+    return { finalText: last.finalText, launched: mine.length, leftOpen }
+  })
+
+  await step('command: saved command on a selection', async () => {
+    if (!llm.available) throw new Error(`Language model not available: ${llm.detail}`)
+    await showPage('Home')
+    await js(`(() => { const box = document.querySelector('.try'); box.value = 'Good morning, see you at the meeting.'; box.focus(); box.select() })()`)
+    const text = await dictate('saved-spanish', 'command')
+    if (!/buen|reuni/i.test(text)) throw new Error(`Not translated: ${JSON.stringify(text)}; last history ${JSON.stringify(db.listHistory('', 1, 0)[0])}`)
+    return { text, uses: db.listCommands().find((entry) => entry.name === 'Spanish')?.uses }
+  })
+
+  await step('command: summarize what is on screen', async () => {
+    if (!llm.available) throw new Error(`Language model not available: ${llm.detail}`)
+    await showPage('Home')
+    // Right before the box, so it sits in the text read before the caret.
+    await js(`(() => {
+      const box = document.querySelector('.try')
+      let note = document.getElementById('selftest-article')
+      if (!note) { note = document.createElement('p'); note.id = 'selftest-article'; box.parentElement.insertBefore(note, box) }
+      note.textContent = 'Lisbon will host the 2027 climate summit. Organisers expect 40,000 visitors over five days and plan two temporary ferry lines.'
+      box.value = ''; box.focus()
+    })()`)
+    let text: string
+    try {
+      text = await dictate('summarize', 'command')
+    } finally {
+      await js(`document.getElementById('selftest-article')?.remove()`)
+    }
+    if (!/lisbon/i.test(text)) throw new Error(`Summary did not use the screen text: ${JSON.stringify(text)}; last history ${JSON.stringify(db.listHistory('', 1, 0)[0])}`)
+    return { text }
+  })
+
   await step('history and stats', async () => {
     const history = db.listHistory('', 10, 0)
     await js(`[...document.querySelectorAll('.nav-item')].find((b) => b.textContent === 'History').click()`)
@@ -200,6 +299,13 @@ export async function runSelfTest(context: SelfTestContext): Promise<void> {
       })),
       stats: db.stats(),
     }
+  })
+
+  await step('command history', async () => {
+    // The History screenshot above already shows these entries with their action badges.
+    const commands = db.listHistory('', 50, 0).filter((entry) => entry.mode === 'command')
+    if (commands.length === 0) throw new Error('No command entries in history')
+    return commands.map((entry) => ({ status: entry.status, heard: entry.rawText, result: entry.finalText, error: entry.error, usedLlm: entry.usedLlm }))
   })
 
   app.quit()
