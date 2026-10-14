@@ -26,6 +26,7 @@ const NOT_A_TARGET = /^(?:the|a|an|my|it|this|that|these|those|up|(?:it|this|tha
  * "and" stays part of a name ("Barnes and Noble").
  */
 const CLAUSE = /,|\band\b(?=(?:\s+\S+){2,})|\b(?:then|write|make|about)\b/i
+/** Keep in sync with DOMAIN in resolve.ts. This one only lets "make.com" past the clause check, so it may be looser. */
 const DOMAIN = /^[\w-]+(?:\.[\w-]+)+(?:\/\S*)?$/i
 const LEADING_FILLER = /^(?:(?:um+|uh+|er+|okay|ok|so|hey|please|can you|could you|would you)\b[\s,]*)+/i
 /** The lookbehind keeps this linear on long whitespace runs. */
@@ -117,7 +118,10 @@ export function routeCommand(transcript: string, saved: SavedCommand[]): Command
   return { kind: 'write', instruction: text }
 }
 
-/** Two saved names with the same key would shadow each other in `routeCommand`. */
+/**
+ * Two saved names with the same key would shadow each other in `routeCommand`. It differs from `siteKey` on
+ * purpose: it strips the router's spoken fillers, while site names drop the resolver's noise words.
+ */
 export function commandKey(name: string): string {
   return normalize(name).toLowerCase()
 }

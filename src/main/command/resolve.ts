@@ -6,6 +6,7 @@ export type OpenTarget =
   | { kind: 'app'; app: InstalledApp }
   | { kind: 'search'; query: string }
 
+/** Keep in sync with DOMAIN in router.ts, which must accept every typed domain this one opens. */
 const DOMAIN = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+([a-z]{2,24})(?:\/\S*)?$/i
 /** File names look like domains ("next.js", "notes.py"), so only well-known endings count as sites. */
 const TLDS = new Set(
@@ -136,7 +137,10 @@ export function findApp(spoken: string, apps: InstalledApp[]): InstalledApp | nu
   return best?.app ?? null
 }
 
-/** Two site names with the same key would shadow each other in `resolveOpenTarget`; '' names nothing. */
+/**
+ * Two site names with the same key would shadow each other in `resolveOpenTarget`; '' names nothing. It differs
+ * from `commandKey` in router.ts on purpose: noise words ("my", "app") go here, spoken fillers go there.
+ */
 export function siteKey(name: string): string {
   return meaningful(name).join(' ')
 }
