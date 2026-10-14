@@ -1,5 +1,5 @@
 import type {
-  DictionaryEntry, EngineStatus, HistoryEntry, ModelStatus, PillState, Settings, ShortcutAction, Snippet, Stats,
+  DictionaryEntry, EngineStatus, HistoryEntry, ModelStatus, PillState, SavedCommand, Settings, ShortcutAction, Site, Snippet, Stats,
 } from './types'
 
 export type Unsubscribe = () => void
@@ -44,6 +44,14 @@ export interface HubApi {
   listSnippets(): Promise<Snippet[]>
   saveSnippet(snippet: { id?: string; trigger: string; expansion: string }): Promise<Snippet>
   deleteSnippet(id: string): Promise<void>
+
+  listCommands(): Promise<SavedCommand[]>
+  saveCommand(command: { id?: string; name: string; prompt: string }): Promise<SavedCommand>
+  deleteCommand(id: string): Promise<void>
+
+  listSites(): Promise<Site[]>
+  saveSite(site: { id?: string; name: string; url: string }): Promise<Site>
+  deleteSite(id: string): Promise<void>
 
   /** Resolves with the chord the user pressed, or null if recording was stopped. */
   recordShortcut(): Promise<number[] | null>

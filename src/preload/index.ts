@@ -38,6 +38,14 @@ const hub: HubApi = {
   saveSnippet: (snippet) => invoke('snippets:save', snippet),
   deleteSnippet: (id) => invoke('snippets:delete', id),
 
+  listCommands: () => invoke('commands:list'),
+  saveCommand: (command) => invoke('commands:save', command),
+  deleteCommand: (id) => invoke('commands:delete', id),
+
+  listSites: () => invoke('sites:list'),
+  saveSite: (site) => invoke('sites:save', site),
+  deleteSite: (id) => invoke('sites:delete', id),
+
   recordShortcut: () => invoke('shortcut:record'),
   stopRecordingShortcut: () => invoke('shortcut:stop'),
   resetShortcut: (action) => invoke('shortcut:reset', action),

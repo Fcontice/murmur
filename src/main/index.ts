@@ -1,7 +1,7 @@
 import { app, BrowserWindow, clipboard, ipcMain, Menu, nativeImage, session, shell, Tray } from 'electron'
 import { existsSync } from 'node:fs'
 import type { AppInfo } from '@shared/api'
-import { DEFAULT_SHORTCUTS, sameKeys, shortcutLabel, validateShortcut } from '@shared/settings'
+import { DEFAULT_SHORTCUTS, normaliseSettingsPatch, sameKeys, shortcutLabel, validateShortcut } from '@shared/settings'
 import type { EngineStatus, Settings, ShortcutAction } from '@shared/types'
 import { AsrService } from './asr/service'
 import { DictationController } from './controller'
@@ -195,13 +195,25 @@ async function main(): Promise<void> {
         if (clash) throw new Error(`${shortcutLabel(keys)} is already used by another shortcut.`)
       }
     }
-    return settings.update(patch)
+    return settings.update(normaliseSettingsPatch(patch))
   }
 
   // IPC for the main window
 
   const handle = (channel: string, handler: (...args: never[]) => unknown) =>
     ipcMain.handle(channel, (_event, ...args) => (handler as (...a: unknown[]) => unknown)(...args))
+
+  // The new stores trim and measure their input, so a malformed request is turned away before it reaches them.
+  const checkedId = (id: unknown): string => {
+    if (typeof id !== 'string') throw new Error('Invalid request.')
+    return id
+  }
+  const checked = <T extends { id?: string }>(input: T, ...fields: Array<keyof T>): T => {
+    if (!input || typeof input !== 'object') throw new Error('Invalid request.')
+    if (input.id !== undefined) checkedId(input.id)
+    if (fields.some((field) => typeof input[field] !== 'string')) throw new Error('Invalid request.')
+    return input
+  }
 
   handle('settings:get', () => settings.get())
   handle('settings:update', (patch: Partial<Settings>) => updateSettings(patch))
@@ -229,6 +241,12 @@ async function main(): Promise<void> {
   handle('snippets:list', () => db.listSnippets())
   handle('snippets:save', (snippet: { id?: string; trigger: string; expansion: string }) => db.saveSnippet(snippet))
   handle('snippets:delete', (id: string) => db.deleteSnippet(id))
+  handle('commands:list', () => db.listCommands())
+  handle('commands:save', (command: { id?: string; name: string; prompt: string }) => db.saveCommand(checked(command, 'name', 'prompt')))
+  handle('commands:delete', (id: string) => db.deleteCommand(checkedId(id)))
+  handle('sites:list', () => db.listSites())
+  handle('sites:save', (site: { id?: string; name: string; url: string }) => db.saveSite(checked(site, 'name', 'url')))
+  handle('sites:delete', (id: string) => db.deleteSite(checkedId(id)))
   handle('shortcut:record', () => {
     shortcutRecorder?.(null)
     helper.recordShortcut(true)

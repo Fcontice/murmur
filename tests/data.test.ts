@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_SHORTCUTS, SEARCH_ENGINES, sameKeys, shortcutLabel, validateSearchUrl, validateShortcut, VK } from '@shared/settings'
+import { DEFAULT_SHORTCUTS, normaliseSettingsPatch, SEARCH_ENGINES, sameKeys, shortcutLabel, validateSearchUrl, validateShortcut, VK } from '@shared/settings'
 import type { HistoryEntry } from '@shared/types'
 import { encodeWav, levelFromDb, pcm16ToFloat32, peak, rmsDb, splitAtPauses } from '../src/main/asr/audio'
 import { Database, MIGRATIONS } from '../src/main/db'
@@ -192,6 +192,17 @@ describe('search url', () => {
     expect(validateSearchUrl('file:///{query}')).toMatch(/https/)
     expect(validateSearchUrl('HTTPS://www.google.com/search?q={query}')).toBeNull()
     expect(validateSearchUrl('https://example.com/{query}?q={query}')).toBeNull()
+  })
+
+  it('trims the search URL in a settings patch and rejects one that cannot be used', () => {
+    expect(normaliseSettingsPatch({ searchUrl: '  https://duckduckgo.com/?q={query} \n', sounds: false })).toEqual({
+      searchUrl: 'https://duckduckgo.com/?q={query}',
+      sounds: false,
+    })
+    expect(() => normaliseSettingsPatch({ searchUrl: '  https://example.com/search  ' })).toThrow(/\{query\}/)
+    expect(() => normaliseSettingsPatch({ searchUrl: 42 as unknown as string })).toThrow('Invalid request.')
+    const untouched = { sounds: true }
+    expect(normaliseSettingsPatch(untouched)).toBe(untouched)
   })
 })
 

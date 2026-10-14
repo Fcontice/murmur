@@ -138,3 +138,15 @@ export function validateSearchUrl(url: string): string | null {
   }
   return null
 }
+
+/** Tidies a settings patch from the hub and throws when a value in it cannot be used. */
+export function normaliseSettingsPatch(patch: Partial<Settings>): Partial<Settings> {
+  if (patch.searchUrl !== undefined) {
+    if (typeof patch.searchUrl !== 'string') throw new Error('Invalid request.')
+    const searchUrl = patch.searchUrl.trim()
+    const problem = validateSearchUrl(searchUrl)
+    if (problem) throw new Error(problem)
+    patch = { ...patch, searchUrl }
+  }
+  return patch
+}
