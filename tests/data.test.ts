@@ -254,8 +254,27 @@ describe('sites', () => {
 
   it('refuses addresses that hide the real host behind a user name', () => {
     const db = new Database(':memory:')
-    expect(() => db.saveSite({ name: 'Sneaky', url: 'https://user:pw@x.com' })).toThrow(/web address/)
-    expect(() => db.saveSite({ name: 'Sneaky', url: 'mail.google.com@evil.com' })).toThrow(/web address/)
+    expect(() => db.saveSite({ name: 'Sneaky', url: 'https://user:pw@x.com' })).toThrow(/user name or password/)
+    expect(() => db.saveSite({ name: 'Sneaky', url: 'mail.google.com@evil.com' })).toThrow(/user name or password/)
+  })
+
+  it('accepts a port and still refuses other schemes', () => {
+    const db = new Database(':memory:')
+    expect(db.saveSite({ name: 'Local', url: 'example.com:8080' }).url).toBe('https://example.com:8080')
+    expect(() => db.saveSite({ name: 'Mail', url: 'mailto:someone@example.com' })).toThrow(/web address/)
+    expect(() => db.saveSite({ name: 'Script', url: 'JavaScript://x.com/%0Aalert(1)' })).toThrow(/web address/)
+  })
+
+  it('treats names the resolver cannot tell apart as clashes', () => {
+    const db = new Database(':memory:')
+    db.saveSite({ name: 'Éclair', url: 'eclair.example.com' })
+    expect(() => db.saveSite({ name: 'éclair', url: 'x.com' })).toThrow(/already/)
+    db.saveSite({ name: 'Café', url: 'cafe.example.com' })
+    expect(() => db.saveSite({ name: 'Café', url: 'x.com' })).toThrow(/already/)
+    const gmail = db.saveSite({ name: 'Gmail', url: 'mail.google.com' })
+    expect(() => db.saveSite({ name: 'My Gmail', url: 'x.com' })).toThrow(/already/)
+    expect(db.saveSite({ id: gmail.id, name: 'My Gmail', url: 'mail.google.com' }).name).toBe('My Gmail')
+    expect(() => db.saveSite({ name: 'My', url: 'x.com' })).toThrow('Use a name with a real word in it.')
   })
 
   it('bounds name and address length', () => {
@@ -323,6 +342,24 @@ describe('database file', () => {
       expect(commands).toHaveLength(3)
       expect(sites).toEqual([])
       expect(userVersion(file)).toBe(2)
+    })
+  })
+
+  it('leaves the file at its old version and unlocked when a migration fails', () => {
+    inTempDir((file) => {
+      const raw = new DatabaseSync(file)
+      try {
+        raw.exec(MIGRATIONS[0]!)
+        raw.exec('CREATE TABLE sites (id TEXT PRIMARY KEY)')
+        raw.exec('PRAGMA user_version = 1')
+      } finally {
+        raw.close()
+      }
+
+      expect(() => new Database(file)).toThrow(/sites/)
+      expect(userVersion(file)).toBe(1)
+      // Windows refuses to delete a file that is still open.
+      expect(() => rmSync(file)).not.toThrow()
     })
   })
 })

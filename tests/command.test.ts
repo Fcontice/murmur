@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { InstalledApp, SavedCommand, Site } from '@shared/types'
-import { asDomainUrl, buildSearchUrl, findApp, resolveOpenTarget } from '../src/main/command/resolve'
+import { asDomainUrl, buildSearchUrl, findApp, resolveOpenTarget, siteKey } from '../src/main/command/resolve'
 import { commandKey, reservedNameProblem, routeCommand } from '../src/main/command/router'
 
 const saved = (name: string, prompt = `Do ${name}.`): SavedCommand => ({ id: name, name, prompt, createdAt: 0, uses: 0 })
@@ -316,6 +316,23 @@ describe('resolveOpenTarget', () => {
 
   it('never matches a site whose name is only filler', () => {
     expect(resolveOpenTarget('the', [site('My', 'https://example.com')], APPS)).toEqual({ kind: 'search', query: 'the' })
+  })
+
+  it('keeps accented letters when matching sites and apps', () => {
+    const cafe = site('Café', 'https://cafe.example.com')
+    expect(resolveOpenTarget('café', [cafe], APPS)).toEqual({ kind: 'url', url: 'https://cafe.example.com', label: 'Café' })
+    expect(resolveOpenTarget('caf', [cafe], APPS)).toEqual({ kind: 'search', query: 'caf' })
+    expect(findApp('éclair', [app('Éclair Editor'), app('Clair')])?.name).toBe('Éclair Editor')
+  })
+})
+
+describe('siteKey', () => {
+  it('keys names the way the resolver matches them', () => {
+    expect(siteKey('Éclair')).toBe(siteKey('éclair'))
+    expect(siteKey('Café')).toBe(siteKey('Café'))
+    expect(siteKey('Café')).not.toBe(siteKey('Caf'))
+    expect(siteKey('My Gmail')).toBe('gmail')
+    expect(siteKey('My')).toBe('')
   })
 })
 

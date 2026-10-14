@@ -28,7 +28,8 @@ const MIN_LONE_PREFIX = 3
 /** "vs" or "vsc" read as initials; longer runs of letters are real words. */
 const MAX_ACRONYM = 4
 
-const words = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().split(' ').filter(Boolean)
+/** Unicode-aware, so "Café" keeps its "é" and typed and spoken forms of it compare equal. */
+const words = (text: string) => text.normalize('NFC').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean)
 const meaningful = (text: string) => words(text).filter((word) => !NOISE_WORDS.has(word))
 const containsRun = (haystack: string[], needle: string[]) => ` ${haystack.join(' ')} `.includes(` ${needle.join(' ')} `)
 /** "faq" asks for "FAQs" and "doc" for "Docs"; only the doc-entry check uses this. */
@@ -135,11 +136,16 @@ export function findApp(spoken: string, apps: InstalledApp[]): InstalledApp | nu
   return best?.app ?? null
 }
 
+/** Two site names with the same key would shadow each other in `resolveOpenTarget`; '' names nothing. */
+export function siteKey(name: string): string {
+  return meaningful(name).join(' ')
+}
+
 /** Sites the user named win, then installed apps, then anything shaped like a domain; otherwise search. */
 export function resolveOpenTarget(spoken: string, sites: Site[], apps: InstalledApp[]): OpenTarget {
-  const target = meaningful(spoken).join(' ')
+  const target = siteKey(spoken)
   // A site named only with filler ("My") must not match a spoken filler word.
-  const site = target ? sites.find((entry) => meaningful(entry.name).join(' ') === target) : undefined
+  const site = target ? sites.find((entry) => siteKey(entry.name) === target) : undefined
   if (site) return { kind: 'url', url: site.url, label: site.name }
   const app = findApp(spoken, apps)
   if (app) return { kind: 'app', app }

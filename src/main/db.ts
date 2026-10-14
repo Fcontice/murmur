@@ -3,6 +3,7 @@ import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import type { DictionaryEntry, HistoryEntry, SavedCommand, Site, Snippet, Stats } from '@shared/types'
+import { siteKey } from './command/resolve'
 import { commandKey, reservedNameProblem } from './command/router'
 
 const MAX_NAME = 40
@@ -10,7 +11,7 @@ const MAX_PROMPT = 1000
 const MAX_URL = 2000
 
 /** Append only: each entry runs once, in order, on the user's existing file. */
-export const MIGRATIONS: string[] = [
+export const MIGRATIONS: readonly string[] = [
   `
   CREATE TABLE history (
     id TEXT PRIMARY KEY,
@@ -117,7 +118,8 @@ function parseList(value: unknown): string[] {
 /** Accepts "mail.google.com" or a full http(s) address; anything else is refused. */
 function normaliseSiteUrl(input: string): string {
   const text = input.trim()
-  const candidate = /^[a-z][a-z0-9+.-]*:/i.test(text) ? text : `https://${text}`
+  // Only "scheme://" counts as a scheme, so "example.com:8080" reads as a host and port.
+  const candidate = /^[a-z][a-z0-9+.-]*:\/\//i.test(text) ? text : `https://${text}`
   let url: URL
   try {
     url = new URL(candidate)
@@ -137,7 +139,13 @@ export class Database {
     if (file !== ':memory:') mkdirSync(dirname(file), { recursive: true })
     this.db = new DatabaseSync(file)
     this.db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;')
-    this.migrate()
+    try {
+      this.migrate()
+    } catch (error) {
+      // Leave the file unlocked so the user can move or restore it.
+      this.db.close()
+      throw error
+    }
   }
 
   private migrate(): void {
@@ -364,8 +372,11 @@ export class Database {
     if (name.length > MAX_NAME) throw new Error(`Keep the name to ${MAX_NAME} characters or fewer.`)
     const url = normaliseSiteUrl(input.url)
     if (url.length > MAX_URL) throw new Error(`Keep the web address to ${MAX_URL} characters or fewer.`)
-    const clash = this.db.prepare('SELECT id FROM sites WHERE name = ? COLLATE NOCASE').get(name) as { id: string } | undefined
-    if (clash && clash.id !== input.id) throw new Error(`A site called "${name}" already exists.`)
+    // Compare the way the resolver matches, so "My Gmail" cannot hide behind "Gmail".
+    const key = siteKey(name)
+    if (!key) throw new Error('Use a name with a real word in it.')
+    const clash = this.listSites().find((entry) => entry.id !== input.id && siteKey(entry.name) === key)
+    if (clash) throw new Error(`A site called "${clash.name}" already exists.`)
 
     if (input.id) {
       const result = this.db.prepare('UPDATE sites SET name = ?, url = ? WHERE id = ?').run(name, url, input.id)
