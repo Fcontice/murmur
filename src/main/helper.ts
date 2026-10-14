@@ -2,7 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import { existsSync } from 'node:fs'
 import { createInterface } from 'node:readline'
-import type { ShortcutAction } from '@shared/types'
+import type { InstalledApp, ShortcutAction } from '@shared/types'
 import { logger } from './log'
 import { resourcePath } from './paths'
 
@@ -183,6 +183,43 @@ export class Helper extends EventEmitter<HelperEvents> {
       return typeof reply.text === 'string' ? reply.text : ''
     } catch {
       return ''
+    }
+  }
+
+  /** Installed apps from the Start menu, or null when the helper cannot list them. */
+  async listApps(): Promise<InstalledApp[] | null> {
+    try {
+      const reply = await this.request('listApps', {}, 9000)
+      if (!reply.ok || !Array.isArray(reply.apps)) return null
+      return (reply.apps as unknown[]).flatMap((entry) => {
+        const { name, id } = (entry ?? {}) as Record<string, unknown>
+        return typeof name === 'string' && name && typeof id === 'string' && id ? [{ name, id }] : []
+      })
+    } catch {
+      return null
+    }
+  }
+
+  async launchApp(id: string): Promise<boolean> {
+    try {
+      // The field is appId because id is the request id on the wire.
+      return (await this.request('launchApp', { appId: id }, 9000)).ok === true
+    } catch {
+      return false
+    }
+  }
+
+  /** Visible text of the foreground window. Empty when it cannot be read in time; source then names the error. */
+  async getWindowText(maxChars: number): Promise<{ text: string; elapsedMs: number; source: string }> {
+    try {
+      const reply = await this.request('getWindowText', { maxChars }, 2500)
+      return {
+        text: reply.ok && typeof reply.text === 'string' ? reply.text : '',
+        elapsedMs: Number(reply.elapsedMs ?? 0),
+        source: String(reply.source ?? reply.error ?? ''),
+      }
+    } catch {
+      return { text: '', elapsedMs: 0, source: 'unavailable' }
     }
   }
 

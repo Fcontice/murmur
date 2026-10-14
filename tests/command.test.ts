@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { InstalledApp, SavedCommand, Site } from '@shared/types'
+import { AppCatalog } from '../src/main/command/apps'
 import { asDomainUrl, buildSearchUrl, findApp, resolveOpenTarget, siteKey } from '../src/main/command/resolve'
 import { commandKey, reservedNameProblem, routeCommand } from '../src/main/command/router'
 
@@ -345,5 +346,81 @@ describe('buildSearchUrl', () => {
   })
   it('falls back to Google for an unusable template', () => {
     expect(buildSearchUrl('file:///c:/{query}', 'x')).toBe('https://www.google.com/search?q=x')
+  })
+})
+
+describe('AppCatalog', () => {
+  const deferred = <T>() => {
+    let resolve!: (value: T) => void
+    const promise = new Promise<T>((r) => (resolve = r))
+    return { promise, resolve }
+  }
+
+  it('caches the list and refreshes after the max age', async () => {
+    let now = 0
+    const listApps = vi.fn(async () => [app('Spotify')])
+    const catalog = new AppCatalog(listApps, () => now)
+    expect(await catalog.apps()).toHaveLength(1)
+    await catalog.apps()
+    expect(listApps).toHaveBeenCalledTimes(1)
+    now += 5 * 60_000 + 1
+    await catalog.apps()
+    expect(listApps).toHaveBeenCalledTimes(2)
+  })
+
+  it('keeps the last good list when a refresh fails', async () => {
+    let now = 0
+    const listApps = vi.fn().mockResolvedValueOnce([app('Spotify')]).mockResolvedValueOnce(null)
+    const catalog = new AppCatalog(listApps, () => now)
+    await catalog.apps()
+    now += 5 * 60_000 + 1
+    expect(await catalog.apps()).toEqual([app('Spotify')])
+  })
+
+  it('resolves to an empty list when the first read throws', async () => {
+    const listApps = vi.fn().mockRejectedValueOnce(new Error('helper down'))
+    const catalog = new AppCatalog(listApps, () => 0)
+    await expect(catalog.apps()).resolves.toEqual([])
+  })
+
+  it('retries a failed first read after a short delay, not the full max age', async () => {
+    let now = 0
+    const listApps = vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce([app('Spotify')])
+    const catalog = new AppCatalog(listApps, () => now)
+    expect(await catalog.apps()).toEqual([])
+    now += 1000
+    expect(await catalog.apps()).toEqual([])
+    expect(listApps).toHaveBeenCalledTimes(1)
+    now += 30_000
+    expect(await catalog.apps()).toEqual([app('Spotify')])
+    expect(listApps).toHaveBeenCalledTimes(2)
+  })
+
+  it('serves a stale list at once and refreshes it in the background', async () => {
+    let now = 0
+    const refresh = deferred<InstalledApp[] | null>()
+    const listApps = vi.fn().mockResolvedValueOnce([app('Spotify')]).mockReturnValueOnce(refresh.promise)
+    const catalog = new AppCatalog(listApps, () => now)
+    await catalog.apps()
+    now += 5 * 60_000 + 1
+    // The refresh is still pending, yet both calls answer with the old list.
+    expect(await catalog.apps()).toEqual([app('Spotify')])
+    expect(await catalog.apps()).toEqual([app('Spotify')])
+    expect(listApps).toHaveBeenCalledTimes(2)
+    refresh.resolve([app('Spotify'), app('Notepad')])
+    await vi.waitFor(async () => expect(await catalog.apps()).toHaveLength(2))
+    expect(listApps).toHaveBeenCalledTimes(2)
+  })
+
+  it('shares one read between callers during the first load', async () => {
+    const first = deferred<InstalledApp[] | null>()
+    const listApps = vi.fn().mockReturnValueOnce(first.promise)
+    const catalog = new AppCatalog(listApps, () => 0)
+    const a = catalog.apps()
+    const b = catalog.apps()
+    first.resolve([app('Spotify')])
+    expect(await a).toEqual([app('Spotify')])
+    expect(await b).toEqual([app('Spotify')])
+    expect(listApps).toHaveBeenCalledTimes(1)
   })
 })
