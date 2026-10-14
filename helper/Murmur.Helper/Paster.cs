@@ -136,13 +136,22 @@ internal sealed class Paster(KeyboardHook hook)
 
     public static void Tap(int vk) => Input.Send(Input.Key(vk, false), Input.Key(vk, true));
 
-    /// <summary>Reads the selection by simulating copy, for apps that expose no accessible text.</summary>
-    public string? CopySelection()
+    /// <summary>
+    /// Reads the selection by simulating copy, for apps that expose no accessible text. With
+    /// <paramref name="expectProcess"/>, sends nothing and returns empty unless that process is in front.
+    /// </summary>
+    public string? CopySelection(string? expectProcess = null)
     {
         lock (_gate)
         {
             WaitForModifierRelease();
             var snapshot = ClipboardAccess.Snapshot();
+            // Checked last, immediately before the keystrokes, like Paste.
+            if (expectProcess is not null)
+            {
+                var actual = ForegroundApp.Describe()["process"]?.GetValue<string>() ?? "";
+                if (!actual.Contains(expectProcess, StringComparison.OrdinalIgnoreCase)) return "";
+            }
             var before = GetClipboardSequenceNumber();
 
             Input.Send(Input.Key(VK_CONTROL, false), Input.Key(VK_C, false), Input.Key(VK_C, true), Input.Key(VK_CONTROL, true));

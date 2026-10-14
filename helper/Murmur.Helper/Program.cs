@@ -74,7 +74,7 @@ internal static class Program
                     break;
                 }
                 case "copySelection":
-                    Reply(request, new JsonObject { ["ok"] = true, ["text"] = paster.CopySelection() });
+                    Reply(request, new JsonObject { ["ok"] = true, ["text"] = paster.CopySelection(request["expectProcess"]?.GetValue<string>()) });
                     break;
                 case "listApps":
                     Reply(request, AppsFolder.List());

@@ -49,7 +49,9 @@ npm run dist          # build the installer into dist/
 
 Set `MURMUR_USER_DATA` to a scratch folder to run against a separate profile.
 
-`MURMUR_SELFTEST=<output folder>` runs an end-to-end check in a dev build: it dictates recorded clips through the real helper and models into the app's own text box and writes `results.json` plus screenshots. It brings the Murmur window to the front while it runs.
+`MURMUR_SELFTEST=<output folder>` runs an end-to-end check in a dev build: it dictates recorded clips through the real helper and models into the app's own text box and writes `results.json` plus screenshots. It brings the Murmur window to the front while it runs. It refuses to start without `MURMUR_USER_DATA`.
+
+The command-mode clips in `tests/fixtures` come from `powershell -File scripts/make-fixtures.ps1` (needs the Microsoft Zira voice; the dictation, command and snippet clips are recordings it leaves alone). Check what the speech model hears in a clip with `node scripts/bench-asr.cjs tests/fixtures/<name>.wav`.
 
 ## How it is built
 

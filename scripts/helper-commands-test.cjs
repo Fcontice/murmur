@@ -159,6 +159,10 @@ async function main() {
     await close('charmap.exe', mine)
   }
 
+  // Must be refused before any key is sent: no such process is in front, so Ctrl+C never reaches this terminal.
+  const copied = await request('copySelection', { expectProcess: 'no-such-process-name' })
+  check('copySelection refuses when the expected process is not in front', copied.ok && copied.text === '', JSON.stringify({ ok: copied.ok, chars: copied.text?.length }))
+
   const window = await request('getWindowText', { maxChars: 6000 }, 5000)
   if (!window.ok && window.error === 'elevated') {
     skip('getWindowText answers within its budget', 'the foreground window is elevated')

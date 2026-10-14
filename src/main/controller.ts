@@ -103,6 +103,12 @@ export class DictationController extends EventEmitter<{ pill: [PillState]; histo
     this.apps.warm()
   }
 
+  /** Diagnostics: loads the installed-apps list now if needed and resolves with how many apps it holds. */
+  async appsReady(): Promise<number> {
+    this.apps.warm()
+    return (await this.apps.apps()).length
+  }
+
   get pillState(): PillState {
     return this.currentPill
   }
@@ -421,7 +427,7 @@ export class DictationController extends EventEmitter<{ pill: [PillState]; histo
         case 'write': {
           if (!llm.available) throw new Error('Command mode needs a language model. Turn on AI clean-up in Settings.')
           const llmStarted = this.now()
-          const selection = textContext.selected || (await helper.copySelection())
+          const selection = textContext.selected || (await helper.copySelection(this.requireForeground ?? undefined))
           if (session.cancelled) return
           if (!selectionFitsModel(selection)) throw new Error('The selection is too long for command mode. Select a shorter passage.')
           let screenText = ''

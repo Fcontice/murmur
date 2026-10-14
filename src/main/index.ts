@@ -28,6 +28,12 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 async function main(): Promise<void> {
+  // The self-test writes history, snippets and settings, so it never runs against the real profile.
+  if (process.env.MURMUR_SELFTEST && !app.isPackaged && !process.env.MURMUR_USER_DATA) {
+    log.error('The self-test needs MURMUR_USER_DATA set to a scratch folder; quitting')
+    app.quit()
+    return
+  }
   const settings = new SettingsStore()
   const db = new Database(userFile('murmur.sqlite'))
   const models = new ModelManager()

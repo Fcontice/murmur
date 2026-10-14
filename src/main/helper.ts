@@ -177,9 +177,10 @@ export class Helper extends EventEmitter<HelperEvents> {
     }
   }
 
-  async copySelection(): Promise<string> {
+  /** With `expectProcess`, copies only while a process with that name is in front; otherwise returns ''. */
+  async copySelection(expectProcess?: string): Promise<string> {
     try {
-      const reply = await this.request('copySelection', {}, 3000)
+      const reply = await this.request('copySelection', expectProcess ? { expectProcess } : {}, 3000)
       return typeof reply.text === 'string' ? reply.text : ''
     } catch {
       return ''

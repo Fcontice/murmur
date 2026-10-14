@@ -25,5 +25,7 @@ send({ id: 2, type: 'setShortcuts', bindings: [{ id: 'ptt', keys: [17, 91] }, { 
 send({ id: 3, type: 'getContext', maxChars: 200 })
 // Must be refused without touching the clipboard or pressing anything: no such process is in front.
 send({ id: 4, type: 'paste', text: 'should never be pasted', expectProcess: 'no-such-process-name' })
+// Likewise refused before Ctrl+C is sent: the reply text must be empty.
+send({ id: 5, type: 'copySelection', expectProcess: 'no-such-process-name' })
 setTimeout(() => send({ type: 'quit' }), 1500)
 child.on('exit', (code) => console.log('exit', code))

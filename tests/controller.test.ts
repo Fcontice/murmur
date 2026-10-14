@@ -252,6 +252,25 @@ describe('command mode', () => {
     expect(t.pills.find((pill) => pill.notice)?.notice?.text).toBe('Opening Spotify')
   })
 
+  it('guards the copy keystroke with the required foreground process, like the paste', async () => {
+    const t = setup({ llmAvailable: true, transcript: 'make this shorter' })
+    t.controller.requireForeground = 'electron'
+    await command(t)
+    expect(t.helper.copySelection).toHaveBeenCalledWith('electron')
+    expect(t.helper.paste).toHaveBeenCalledWith('Rewritten text.', expect.objectContaining({ expectProcess: 'electron' }))
+  })
+
+  it('copies without a process guard when none is required', async () => {
+    const t = setup({ llmAvailable: true, transcript: 'make this shorter' })
+    await command(t)
+    expect(t.helper.copySelection).toHaveBeenCalledWith(undefined)
+  })
+
+  it('reports how many installed apps it knows', async () => {
+    const t = setup()
+    await expect(t.controller.appsReady()).resolves.toBe(2)
+  })
+
   it('explains that writing commands need a language model', async () => {
     const t = setup({ llmAvailable: false, transcript: 'make this shorter' })
     await command(t)

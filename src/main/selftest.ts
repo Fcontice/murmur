@@ -52,10 +52,22 @@ function readWavPcm(file: string): Int16Array {
   return new Int16Array(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + (bytes.byteLength & ~1)))
 }
 
+/**
+ * PIDs of running processes with this image name. Rejects when tasklist fails or prints anything unexpected, so a
+ * caller never mistakes an unreadable list for "none running" and closes a process the user had open.
+ */
 async function processIds(image: string): Promise<Set<number>> {
   const { execFile } = await import('node:child_process')
-  const out = await new Promise<string>((resolve) => execFile('tasklist', ['/FI', `IMAGENAME eq ${image}`, '/FO', 'CSV', '/NH'], (_e, stdout) => resolve(stdout ?? '')))
-  return new Set([...out.matchAll(/^"[^"]+","(\d+)"/gm)].map((match) => Number(match[1])))
+  const out = await new Promise<string>((resolve, reject) =>
+    execFile('tasklist', ['/FI', `IMAGENAME eq ${image}`, '/FO', 'CSV', '/NH'], (error, stdout) => (error ? reject(new Error(`tasklist failed: ${error.message}`)) : resolve(stdout))),
+  )
+  const ids = new Set<number>()
+  for (const line of out.split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean)) {
+    const row = /^"[^"]+","(\d+)",/.exec(line)
+    if (row) ids.add(Number(row[1]))
+    else if (!line.startsWith('INFO:')) throw new Error(`Unexpected tasklist output: ${JSON.stringify(line.slice(0, 120))}`)
+  }
+  return ids
 }
 
 /**
@@ -76,6 +88,7 @@ async function closeProcesses(image: string, pids: number[]): Promise<number[]> 
 
 export async function runSelfTest(context: SelfTestContext): Promise<void> {
   const { outDir, controller, helper, asr, llm, db, settings, pill } = context
+  const startedAt = Date.now()
   mkdirSync(outDir, { recursive: true })
   // Lets UI Automation read the page text of our own window, which the screen-aware command step needs.
   app.setAccessibilitySupportEnabled(true)
@@ -94,6 +107,17 @@ export async function runSelfTest(context: SelfTestContext): Promise<void> {
   settings.update({ sounds: false })
   // Enforced by the helper at the moment of pasting, so test text can never reach another window.
   controller.requireForeground = 'electron'
+  // One sink for the whole run, never removed: a command still finishing after its step can never open the browser.
+  let urlSink: string[] = []
+  controller.urlOverride = (url) => urlSink.push(url)
+  // Where the last screen read came from, for failure messages. The text itself is not kept.
+  let lastScreen: { source: string; chars: number } | null = null
+  const getWindowText = helper.getWindowText.bind(helper)
+  helper.getWindowText = async (maxChars) => {
+    const result = await getWindowText(maxChars)
+    lastScreen = { source: result.source, chars: result.text.length }
+    return result
+  }
   const hub = context.showHub()
   const rendererLog: string[] = []
   hub.webContents.on('console-message', (details) => rendererLog.push(`console[${details.level}] ${details.message}`.slice(0, 400)))
@@ -140,7 +164,14 @@ export async function runSelfTest(context: SelfTestContext): Promise<void> {
     await waitFor(() => asr.state === 'ready' || asr.state === 'failed', 120_000, 'speech model')
     await waitFor(() => llm.state !== 'loading', 240_000, 'language model')
     if (asr.state !== 'ready') throw new Error(asr.detail)
-    return { asr: asr.detail, llm: `${llm.state}: ${llm.detail}` }
+    // "open" resolves against the installed-apps list; without it every app name would become a web search.
+    let apps = 0
+    const appsDeadline = Date.now() + 20_000
+    while ((apps = await controller.appsReady()) === 0) {
+      if (Date.now() > appsDeadline) throw new Error('Timed out waiting for the installed-apps list')
+      await sleep(500)
+    }
+    return { asr: asr.detail, llm: `${llm.state}: ${llm.detail}`, apps }
   })
 
   await step('screenshots', async () => {
@@ -218,53 +249,74 @@ export async function runSelfTest(context: SelfTestContext): Promise<void> {
     await sleep(400)
   }
 
+  /** Command-mode history written since `since`, newest first. */
+  const commandEntries = (since: number) => db.listHistory('', 50, 0).filter((entry) => entry.mode === 'command' && entry.createdAt >= since)
+
   /** Actions never paste; the empty "Try it" box only keeps the focus inside Murmur's own window. */
   const commandClip = async (clip: string) => {
     await showPage('Home')
     await js(`(() => { const box = document.querySelector('.try'); box.value = ''; box.focus() })()`)
+    const stepStart = Date.now()
     const urls: string[] = []
-    controller.urlOverride = (url) => urls.push(url)
+    urlSink = urls
     try {
       await dictate(clip, 'command')
     } finally {
-      controller.urlOverride = null
+      urlSink = []
     }
-    return { urls, last: db.listHistory('', 1, 0)[0] }
+    return { urls, last: commandEntries(stepStart)[0] }
   }
 
   await step('command: search for', async () => {
     const { urls, last } = await commandClip('search')
-    if (urls[0] !== 'https://www.google.com/search?q=standing%20desks') throw new Error(`Unexpected URL ${JSON.stringify(urls)}; heard ${JSON.stringify(last?.rawText)}`)
-    return { url: urls[0], status: last?.status }
+    if (urls[0] !== 'https://www.google.com/search?q=standing%20desks' || last?.status !== 'action') {
+      throw new Error(`Unexpected URL ${JSON.stringify(urls)}; history ${JSON.stringify(last)}`)
+    }
+    return { url: urls[0], status: last.status }
   })
 
   await step('command: go to a spoken domain', async () => {
     const { urls, last } = await commandClip('goto')
-    if (urls[0] !== 'https://example.com') throw new Error(`Unexpected URL ${JSON.stringify(urls)}; heard ${JSON.stringify(last?.rawText)}`)
-    return { url: urls[0], status: last?.status }
+    if (urls[0] !== 'https://example.com' || last?.status !== 'action') throw new Error(`Unexpected URL ${JSON.stringify(urls)}; history ${JSON.stringify(last)}`)
+    return { url: urls[0], status: last.status }
   })
 
   await step('command: open an installed app', async () => {
+    // Rejects if the process list cannot be read, so a Character Map the user had open is never taken for ours.
     const before = await processIds('charmap.exe')
-    const { urls, last } = await commandClip('open-charmap')
     let mine: number[] = []
-    for (let attempt = 0; attempt < 20 && mine.length === 0; attempt++) {
-      await sleep(250)
-      mine = [...(await processIds('charmap.exe'))].filter((pid) => !before.has(pid))
+    let leftOpen: number[] = []
+    let clip: Awaited<ReturnType<typeof commandClip>>
+    try {
+      clip = await commandClip('open-charmap')
+    } finally {
+      for (let attempt = 0; attempt < 20 && mine.length === 0; attempt++) {
+        await sleep(250)
+        mine = [...(await processIds('charmap.exe'))].filter((pid) => !before.has(pid))
+      }
+      leftOpen = await closeProcesses('charmap.exe', mine)
     }
-    const leftOpen = await closeProcesses('charmap.exe', mine)
+    const { urls, last } = clip
+    if (leftOpen.length > 0) throw new Error(`Could not close the Character Map this test opened (PID ${leftOpen.join(', ')})`)
     if (urls.length > 0) throw new Error(`Searched instead of opening the app: ${JSON.stringify(urls)}; heard ${JSON.stringify(last?.rawText)}`)
     if (last?.status !== 'action' || mine.length === 0) throw new Error(`Character Map did not open: ${JSON.stringify(last)}`)
-    return { finalText: last.finalText, launched: mine.length, leftOpen }
+    return { finalText: last.finalText, launched: mine.length }
   })
 
   await step('command: saved command on a selection', async () => {
     if (!llm.available) throw new Error(`Language model not available: ${llm.detail}`)
+    const uses = () => db.listCommands().find((entry) => entry.id === 'example-spanish')?.uses
+    const usesBefore = uses()
+    if (usesBefore === undefined) throw new Error('The seeded Spanish command is missing')
     await showPage('Home')
     await js(`(() => { const box = document.querySelector('.try'); box.value = 'Good morning, see you at the meeting.'; box.focus(); box.select() })()`)
+    const stepStart = Date.now()
     const text = await dictate('saved-spanish', 'command')
-    if (!/buen|reuni/i.test(text)) throw new Error(`Not translated: ${JSON.stringify(text)}; last history ${JSON.stringify(db.listHistory('', 1, 0)[0])}`)
-    return { text, uses: db.listCommands().find((entry) => entry.name === 'Spanish')?.uses }
+    const last = commandEntries(stepStart)[0]
+    if (!/buen|reuni/i.test(text)) throw new Error(`Not translated: ${JSON.stringify(text)}; history ${JSON.stringify(last)}`)
+    const usesAfter = uses()
+    if (usesAfter !== usesBefore + 1) throw new Error(`Uses went from ${usesBefore} to ${usesAfter}, expected +1`)
+    return { text, usesBefore, usesAfter }
   })
 
   await step('command: summarize what is on screen', async () => {
@@ -278,14 +330,20 @@ export async function runSelfTest(context: SelfTestContext): Promise<void> {
       note.textContent = 'Lisbon will host the 2027 climate summit. Organisers expect 40,000 visitors over five days and plan two temporary ferry lines.'
       box.value = ''; box.focus()
     })()`)
+    const stepStart = Date.now()
+    lastScreen = null
     let text: string
     try {
       text = await dictate('summarize', 'command')
     } finally {
       await js(`document.getElementById('selftest-article')?.remove()`)
     }
-    if (!/lisbon/i.test(text)) throw new Error(`Summary did not use the screen text: ${JSON.stringify(text)}; last history ${JSON.stringify(db.listHistory('', 1, 0)[0])}`)
-    return { text }
+    if (!/lisbon/i.test(text)) {
+      throw new Error(
+        `Summary did not use the screen text: ${JSON.stringify(text)}; llmProvider ${settings.get().llmProvider}; screen ${JSON.stringify(lastScreen ?? 'not read')}; history ${JSON.stringify(commandEntries(stepStart)[0])}`,
+      )
+    }
+    return { text, screen: lastScreen }
   })
 
   await step('history and stats', async () => {
@@ -303,10 +361,23 @@ export async function runSelfTest(context: SelfTestContext): Promise<void> {
 
   await step('command history', async () => {
     // The History screenshot above already shows these entries with their action badges.
-    const commands = db.listHistory('', 50, 0).filter((entry) => entry.mode === 'command')
-    if (commands.length === 0) throw new Error('No command entries in history')
-    return commands.map((entry) => ({ status: entry.status, heard: entry.rawText, result: entry.finalText, error: entry.error, usedLlm: entry.usedLlm }))
+    const commands = commandEntries(startedAt).reverse()
+    const entries = commands.map((entry) => ({ status: entry.status, heard: entry.rawText, result: entry.finalText, error: entry.error, usedLlm: entry.usedLlm }))
+    // In run order: the rewrite, search, go to, open, then the saved command and the summary.
+    const expected = ['pasted', 'action', 'action', 'action', 'pasted', 'pasted']
+    const actions = commands.filter((entry) => entry.status === 'action')
+    const pasted = commands.slice(-2)
+    if (
+      JSON.stringify(commands.map((entry) => entry.status)) !== JSON.stringify(expected) ||
+      actions.some((entry) => entry.usedLlm) ||
+      pasted.some((entry) => !entry.usedLlm)
+    ) {
+      throw new Error(`Expected statuses ${JSON.stringify(expected)}, actions without the model and model output pasted; got ${JSON.stringify(entries)}`)
+    }
+    return entries
   })
 
+  // A command still running would otherwise be cut off mid-paste by the quit.
+  await waitFor(() => !controller.busy, 90_000, 'the last command to finish').catch(() => undefined)
   app.quit()
 }

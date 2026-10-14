@@ -1,4 +1,6 @@
 # Synthesises the command-mode voice clips used by the self-test: powershell -File scripts/make-fixtures.ps1
+# Needs the 'Microsoft Zira Desktop' voice. Does not touch dictation.wav, command.wav or snippet.wav, which are
+# recordings. Check each new clip with: node scripts/bench-asr.cjs tests/fixtures/<name>.wav
 Add-Type -AssemblyName System.Speech
 $format = New-Object System.Speech.AudioFormat.SpeechAudioFormatInfo(16000, [System.Speech.AudioFormat.AudioBitsPerSample]::Sixteen, [System.Speech.AudioFormat.AudioChannel]::Mono)
 $clips = [ordered]@{
