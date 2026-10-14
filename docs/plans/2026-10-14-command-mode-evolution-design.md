@@ -1,0 +1,75 @@
+# Command mode evolution: design
+
+Date: 2026-10-14
+Status: approved
+
+Command mode (Ctrl + Win + Alt) today rewrites the selection or writes new text at the cursor. This round adds PC actions (open apps and sites, web search), saved commands, and on-screen context for writing commands. A command-only cloud model is deferred until the local results have been used for a while.
+
+## Scope
+
+In:
+- Trigger-word routing between actions and writing.
+- "Open X": your Sites list, installed apps, domains, then web search as a fallback.
+- "Search for X" in the default browser with a configurable search engine.
+- Saved commands: named instructions managed in a Commands page.
+- Window text as context for writing commands when nothing is selected, sent only to the local model.
+
+Out: media and volume control, window control, follow-ups on the last result, preview-before-insert, a command-only cloud model.
+
+## Routing
+
+`routeCommand(transcript, savedCommands)` in `src/main/command/router.ts` is a pure function returning one route:
+
+| Route | Matches | Example |
+|---|---|---|
+| `open` | starts with "open", "launch", "start", "go to" | "open spotify", "go to github.com" |
+| `search` | starts with "search for", "search", "look up", "google" | "look up electron release notes" |
+| `saved` | starts with a saved command's name | "spanish", "bulletize this" |
+| `write` | anything else | current behaviour plus screen context |
+
+Matching ignores case, leading fillers ("um, open…") and trailing punctuation from speech recognition. A trigger word only counts as the first word of the command followed by a target, so "open-minded people…" and "search engines are…" stay writing commands.
+
+## Open and search
+
+"Open X" resolves in order:
+1. The Sites list in Settings ("gmail" → `mail.google.com`), exact match ignoring case.
+2. Installed apps from the helper's `listApps`, which reads `shell:AppsFolder` (Win32 and Store apps). Results are cached and refreshed every few minutes. Matching is fuzzy, so "VS Code" finds "Visual Studio Code".
+3. Text that looks like a domain opens as `https://…`.
+4. Otherwise, a web search for X, with a pill notice saying no app was found.
+
+Search uses a configurable URL template: Google by default, with DuckDuckGo and Bing presets or a custom template.
+
+URLs open through `shell.openExternal`, restricted to `http` and `https`. Apps launch through the helper's `launchApp` by app ID only. A transcript never becomes a command line. Actions show a short pill confirmation and are recorded in History with a new `action` status.
+
+## Saved commands
+
+- Migration 2 adds a `commands` table (id, name unique ignoring case, prompt, created_at, uses).
+- A Commands page in the hub, modelled on Snippets, ships with editable examples: Spanish, Bulletize, Shorten.
+- Words spoken after the name are appended to the saved instruction. The command then runs as a writing command on the selection, or on screen text when nothing is selected.
+- Names that clash with trigger words or with another saved command are rejected with a reason.
+
+## Screen context
+
+- The helper's `getWindowText(maxChars)` walks the focused window's UI Automation tree. It collects document, edit and text content, and skips password fields, offscreen elements and duplicates. It caps at about 6,000 characters, keeping the text nearest the focus, and has a 1.5 s budget. On timeout or failure the command runs without context.
+- When nothing is selected, the writing prompt gets a `<screen_text>` reference block. The model is told to produce what was asked for, not to restate the source.
+- Screen text goes only to the local model. With a remote provider it is left out, and the pill says so once.
+- Screen text is never logged. Only its length and timing are.
+- The local model runs with an 8,192-token context. About 6,000 characters (roughly 1,500 tokens) leaves room for the prompt and the output.
+
+## Errors
+
+| Situation | Behaviour |
+|---|---|
+| App launch fails | Notice; History status `failed` |
+| Browser open fails | Notice; URL copied to the clipboard |
+| Window text read fails or times out | Runs without context |
+| No language model | Actions and search still work; writing commands show the existing notice |
+| Saved command name clash | Rejected in the UI with the reason |
+
+## Testing
+
+1. Unit tests (vitest): router cases including lookalikes, open-target resolution order, domain detection, search URL encoding, prompt builders with and without screen text and with a remote provider, migration 2 and saved-command CRUD, and controller flows for every route and error path using a fake helper.
+2. Model evals (`npm run test:prompts`) against the installed local model: reply, summarize and saved commands on fixture screen text, checked for output shape.
+3. Helper smoke test: `listApps` returns real apps with IDs, `getWindowText` reads a known Murmur window within budget, and `launchApp` opens and then closes Notepad.
+4. End-to-end self-test (`MURMUR_SELFTEST`) with recorded clips for open, search, go to, a saved command and summarize. It asserts real effects (process launched, exact URL requested, text inserted into Murmur's own box) and saves screenshots. Paste steps keep the `requireForeground` guard.
+5. A packaged build installed over the current copy, the self-test re-run on the installed app, and a manual checklist for physical key presses.
