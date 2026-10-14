@@ -18,6 +18,10 @@ describe('routeCommand', () => {
     ['open up teams', 'teams'],
     ['Open. Spotify.', 'Spotify'],
     ['open “Spotify”', 'Spotify'],
+    ['go to make.com', 'make.com'],
+    ['go to about.me', 'about.me'],
+    ['pull up Barnes and Noble', 'Barnes and Noble'],
+    ['open command and conquer', 'command and conquer'],
   ])('%s opens %s', (spoken, target) => {
     expect(routeCommand(spoken, commands)).toEqual({ kind: 'open', target })
   })
@@ -30,6 +34,8 @@ describe('routeCommand', () => {
     ['search google for cheap flights', 'cheap flights'],
     ['search for "standing desks"', 'standing desks'],
     ['google docs', 'google docs'],
+    ['Google, docs.', 'Google docs'],
+    ["look up the Beatles'", "the Beatles'"],
   ])('%s searches for %s', (spoken, query) => {
     expect(routeCommand(spoken, commands)).toEqual({ kind: 'search', query })
   })
@@ -38,6 +44,7 @@ describe('routeCommand', () => {
     expect(routeCommand('Spanish', commands)).toEqual({ kind: 'saved', command: commands[0], extra: '' })
     expect(routeCommand('spanish this please.', commands)).toEqual({ kind: 'saved', command: commands[0], extra: '' })
     expect(routeCommand('Bulletize, keep it to three points', commands)).toEqual({ kind: 'saved', command: commands[1], extra: 'keep it to three points' })
+    expect(routeCommand("Bulletize, call it 'Q3'", commands)).toEqual({ kind: 'saved', command: commands[1], extra: "call it 'Q3'" })
     expect(routeCommand('make it formal', commands)).toEqual({ kind: 'saved', command: commands[2], extra: '' })
   })
 
@@ -94,8 +101,20 @@ describe('routeCommand', () => {
     'open up a new paragraph about dogs',
     'Open the door and walk in, write that',
     'open spotify and then search for cats',
+    'open Microsoft Teams, now',
+    'Open that up.',
+    'Look up this',
+    'Search for that.',
+    'google this please',
+    'Google it.',
   ])('%s is a writing command', (spoken) => {
     expect(routeCommand(spoken, commands).kind).toBe('write')
+  })
+
+  it('keeps a long instruction intact', () => {
+    const long = `rewrite this so that ${'every word counts '.repeat(170)}in the end`
+    expect(long.length).toBeGreaterThan(3000)
+    expect(routeCommand(long, commands)).toEqual({ kind: 'write', instruction: long })
   })
 
   it('passes the cleaned instruction through for writing', () => {
@@ -112,6 +131,7 @@ describe('reservedNameProblem', () => {
     expect(reservedNameProblem('Opener')).toBeNull()
     expect(reservedNameProblem('open,x')).toMatch(/open/i)
     expect(reservedNameProblem('open. x')).toMatch(/open/i)
+    expect(reservedNameProblem('Open.ai summary')).toBeNull()
   })
 
   it('rejects names with no real word in them', () => {

@@ -11,14 +11,18 @@ const OPEN_TRIGGERS = ['open up', 'open', 'launch', 'go to', 'pull up']
 const SEARCH_TRIGGERS = ['search the web for', 'search google for', 'search for', 'look up', 'google']
 /** An unknown open target becomes a web search, so a false "open" fires a browser: keep this strict. */
 const MAX_OPEN_WORDS = 6
-const NOT_A_TARGET = /^(?:the|a|an|my|it|this|that|these|those|up)$/i
-/** "open X and make it…" or "go to X, write…" is an instruction about writing, not a place. */
-const CLAUSE = /,|\b(?:and|then|write|make|about)\b/i
-/** TRAILING_POLITENESS is quadratic on long whitespace runs; no real command is this long. */
-const MAX_TRANSCRIPT = 2000
+/** Words that point at the selection rather than name a place or a query. */
+const NOT_A_TARGET = /^(?:the|a|an|my|it|this|that|these|those|up|(?:it|this|that) up)$/i
+/**
+ * "open X and make it…" or "go to X, write…" is an instruction about writing, not a place. A short
+ * "and" stays part of a name ("Barnes and Noble").
+ */
+const CLAUSE = /,|\band\b(?=(?:\s+\S+){2,})|\b(?:then|write|make|about)\b/i
+const DOMAIN = /^[\w-]+(?:\.[\w-]+)+(?:\/\S*)?$/i
 const LEADING_FILLER = /^(?:(?:um+|uh+|er+|okay|ok|so|hey|please|can you|could you|would you)\b[\s,]*)+/i
-const TRAILING_POLITENESS = /[\s,]+(?:please|thanks|thank you)$/i
-const QUOTES = /^["'“”‘’]+|["'“”‘’]+$/g
+/** The lookbehind keeps this linear on long whitespace runs. */
+const TRAILING_POLITENESS = /(?<![\s,])[\s,]+(?:please|thanks|thank you)$/i
+const QUOTE_PAIRS: Record<string, string> = { '"': '"', "'": "'", '“': '”', '‘': '’' }
 /** What people add after a saved command's name that carries no extra instruction. */
 const EMPTY_EXTRA = /^(?:(?:this|that|it)[\s,]*)?(?:please|thanks|thank you)?$/i
 
@@ -38,14 +42,25 @@ function escapeRegExp(text: string): string {
 
 /** What follows the spoken words, minus separators and politeness. */
 function rest(text: string, matched: number): string {
-  return tidy(tidy(text.slice(matched).replace(/^[\s,.]+/, '').replace(TRAILING_POLITENESS, '')).replace(QUOTES, ''))
+  return tidy(text.slice(matched).replace(/^[\s,.]+/, '').replace(TRAILING_POLITENESS, ''))
+}
+
+/** Removes quotes only when one pair wraps the whole thing, so "the Beatles'" survives. */
+function unquote(text: string): string {
+  const close = QUOTE_PAIRS[text[0] ?? '']
+  const inner = text.slice(1, -1)
+  return close && text.length > 1 && text.endsWith(close) && !inner.includes(close) ? tidy(inner) : text
+}
+
+/** "Open. Spotify." still starts with "open", but "open.ai" does not. */
+function triggerMatch(text: string, trigger: string): RegExpExecArray | null {
+  return new RegExp(`^${escapeRegExp(trigger)}(?:$|[\\s,]|\\.(?=\\s|$))`, 'i').exec(text)
 }
 
 function afterTrigger(text: string, triggers: string[]): string | null {
   for (const trigger of triggers) {
-    // "Open. Spotify." still counts, but "open.ai" does not.
-    const match = new RegExp(`^${escapeRegExp(trigger)}(?:$|[\\s,]|\\.(?=\\s|$))`, 'i').exec(text)
-    if (match) return rest(text, match[0].length)
+    const match = triggerMatch(text, trigger)
+    if (match) return unquote(rest(text, match[0].length))
   }
   return null
 }
@@ -53,18 +68,27 @@ function afterTrigger(text: string, triggers: string[]): string | null {
 function openTarget(spoken: string): string | null {
   if (spoken.split(/\s+/).length > MAX_OPEN_WORDS) return null
   const target = spoken.replace(/^(?:the|a|an)\b[\s,]*/i, '')
-  if (!target || NOT_A_TARGET.test(target) || CLAUSE.test(target) || /^(?:with|by)\b/i.test(target)) return null
+  if (!target || NOT_A_TARGET.test(target) || /^(?:with|by)\b/i.test(target)) return null
+  if (!DOMAIN.test(target) && CLAUSE.test(target)) return null
   return target
+}
+
+function searchQuery(text: string): string | null {
+  const query = afterTrigger(text, SEARCH_TRIGGERS)
+  if (!query || NOT_A_TARGET.test(query)) return null
+  // "google docs" is a search for Google Docs, not for "docs".
+  const bare = /^(google)[\s,]+(\S+)$/i.exec(text)
+  return bare ? `${bare[1]} ${bare[2]}` : query
 }
 
 /** Decides what a command-mode transcript asks for. Pure, so every phrasing can be tested. */
 export function routeCommand(transcript: string, saved: SavedCommand[]): CommandRoute {
-  const text = normalize(transcript.slice(0, MAX_TRANSCRIPT))
+  const text = normalize(transcript)
   if (!text) return { kind: 'empty' }
 
   // Search triggers go first on purpose: "search for" must not be read as anything else.
-  const searchQuery = afterTrigger(text, SEARCH_TRIGGERS)
-  if (searchQuery) return { kind: 'search', query: /^google\s+\S+$/i.test(text) ? text : searchQuery }
+  const query = searchQuery(text)
+  if (query) return { kind: 'search', query }
 
   const spokenTarget = afterTrigger(text, OPEN_TRIGGERS)
   const target = spokenTarget === null ? null : openTarget(spokenTarget)
@@ -90,7 +114,7 @@ export function reservedNameProblem(name: string): string | null {
   const lower = normalize(name).toLowerCase()
   if (!lower) return 'Use a name with a real word in it, not just "ok" or "please".'
   for (const trigger of [...OPEN_TRIGGERS, ...SEARCH_TRIGGERS]) {
-    if (lower.startsWith(trigger) && (lower === trigger || /^[\s,.]/.test(lower.slice(trigger.length)))) {
+    if (triggerMatch(lower, trigger)) {
       return `Names cannot start with "${trigger}": that phrase opens apps or searches the web.`
     }
   }
