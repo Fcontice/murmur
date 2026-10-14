@@ -50,11 +50,11 @@ URLs open through `shell.openExternal`, restricted to `http` and `https`. Apps l
 
 ## Screen context
 
-- The helper's `getWindowText(maxChars)` walks the focused window's UI Automation tree. It collects document, edit and text content, and skips password fields, offscreen elements and duplicates. It caps at about 6,000 characters, keeping the text nearest the focus, and has a 1.5 s budget. On timeout or failure the command runs without context.
+- The helper's `getWindowText(maxChars)` walks the focused window's UI Automation tree. It collects document, edit and text content, and skips password fields, offscreen elements and duplicates. Murmur asks for 16,000 characters (the helper allows up to 20,000), keeping the text nearest the focus, and has a 1.5 s budget. On timeout or failure the command runs without context.
 - When nothing is selected, the writing prompt gets a `<screen_text>` reference block. The model is told to produce what was asked for, not to restate the source.
 - Screen text goes only to the local model. With a remote provider it is left out, and the pill says so once.
 - Screen text is never logged. Only its length and timing are.
-- The local model runs with an 8,192-token context. About 6,000 characters (roughly 1,500 tokens) leaves room for the prompt and the output.
+- The local model runs with an 8,192-token context. Screen text gets about 5,000 estimated tokens of it (16,000 characters of Latin text is about 4,800), which leaves room for the prompt and the output.
 
 ## Errors
 
@@ -83,7 +83,7 @@ URLs open through `shell.openExternal`, restricted to `http` and `https`. Apps l
 - App matching was tuned on a probe of 210 real installed apps: whole-word matches beat prefix matches; documentation, help, installer and uninstaller entries are skipped unless asked for by name; "cmd" and "to do" are aliases for Command Prompt and Microsoft To Do.
 - Site names are keyed the same way as the resolver matches them, so a saved name always matches what is spoken.
 - Screen text is read only when a model can use it and nothing is selected, not on every command.
-- The screen budget is counted in estimated tokens (about 5,000) rather than 6,000 characters, and a selection over about 3,000 tokens is refused with a notice.
+- The screen budget is counted in estimated tokens (about 5,000) rather than characters, and a selection over about 3,000 tokens is refused with a notice.
 - Prompt tags and forged labels ("The user's instruction:") in screen text and selections are neutralised before the prompt is built and restored in the output.
 - The end-to-end self-test runs only in a dev build and refuses to start without `MURMUR_USER_DATA`.
 - Known limit: Gemma 3 4B still obeys a short command at the end of the screen text. The eval keeps it as an expected failure; the impact is wrong typed text, not an action.

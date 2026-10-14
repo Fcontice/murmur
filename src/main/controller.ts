@@ -29,7 +29,11 @@ const SILENCE_PEAK = 0.003
 const CAPTURE_STOP_TIMEOUT_MS = 1200
 const NOTICE_MS = 4200
 const CONTEXT_CHARS = 600
-const SCREEN_CHARS = 6000
+/**
+ * About 4,800 estimated tokens of Latin text, so the prompt's 5,000-token screen budget does the trimming for
+ * anything denser. The helper allows up to 20,000.
+ */
+const SCREEN_CHARS = 16_000
 const REMOTE_SCREEN_NOTICE = 'Screen text is only shared with the built-in model, so this command ran without it.'
 
 function assertNever(value: never): never {

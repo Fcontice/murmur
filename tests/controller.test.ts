@@ -293,7 +293,7 @@ describe('command mode', () => {
     const t = setup({ llmAvailable: true })
     t.controller.handleShortcut('command', 'down')
     await vi.advanceTimersByTimeAsync(0)
-    expect(t.helper.getWindowText).toHaveBeenCalledWith(6000)
+    expect(t.helper.getWindowText).toHaveBeenCalledWith(16_000)
     expect(t.asr.transcribe).not.toHaveBeenCalled()
   })
 
@@ -475,7 +475,7 @@ describe('command writing', () => {
   it('uses window text when nothing is selected with the local model', async () => {
     const t = setup({ llmAvailable: true, transcript: 'reply to this', windowText: 'Can we meet Friday?' })
     await command(t)
-    expect(t.helper.getWindowText).toHaveBeenCalledWith(6000)
+    expect(t.helper.getWindowText).toHaveBeenCalledWith(16_000)
     expect((t.llm.complete.mock.calls[0]![0] as { user: string }).user).toContain('<screen_text>\nCan we meet Friday?\n</screen_text>')
   })
 

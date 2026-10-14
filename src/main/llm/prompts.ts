@@ -113,7 +113,10 @@ const MAX_SCREEN_TEXT_TOKENS = 5000
 const MAX_SELECTION_TOKENS = 3000
 const TOKENS_PER_CHAR = 0.3
 const TOKENS_PER_CJK_CHAR = 1.2
-/** Character backstop, derived from the token budget at the cheapest rate so it never cuts first. */
+/**
+ * Character backstop, derived from the token budget at the cheapest rate so it never cuts first. At 16,666 it
+ * sits above the controller's 16,000-character read.
+ */
 const MAX_SCREEN_TEXT_CHARS = Math.floor(MAX_SCREEN_TEXT_TOKENS / TOKENS_PER_CHAR)
 
 // Han, Hangul, Kana and their punctuation and full-width forms tokenise at about one token per character.
