@@ -9,6 +9,8 @@ import { resourcePath } from './paths'
 const log = logger('helper')
 const REQUEST_TIMEOUT_MS = 3000
 const RESTART_BACKOFF_MS = [0, 1000, 2000, 4000, 8000, 16000]
+/** Bump with `Version` in Program.cs whenever the request or reply shapes change. */
+const EXPECTED_HELPER_VERSION = '2'
 
 export interface HelperContext {
   app: { name?: string; process?: string; title?: string; path?: string }
@@ -52,6 +54,8 @@ export class Helper extends EventEmitter<HelperEvents> {
   private stopping = false
   private bindings: Array<{ id: ShortcutAction; keys: number[]; whileCapturing: boolean }> = []
   status: 'starting' | 'ready' | 'failed' = 'starting'
+  /** Busy or timed-out screen reads already logged; once per reason is enough to diagnose. */
+  private loggedUnavailable = new Set<string>()
 
   start(): void {
     const exe = resourcePath('helper', 'murmur-helper.exe')
@@ -116,6 +120,10 @@ export class Helper extends EventEmitter<HelperEvents> {
 
     switch (message.event) {
       case 'ready':
+        // A stale build still runs; the warning explains whatever it then gets wrong.
+        if (String(message.version) !== EXPECTED_HELPER_VERSION) {
+          log.warn(`Helper version ${String(message.version)}, expected ${EXPECTED_HELPER_VERSION}: rebuild the helper`)
+        }
         this.restarts = 0
         this.setStatus('ready')
         void this.pushBindings()
@@ -168,9 +176,19 @@ export class Helper extends EventEmitter<HelperEvents> {
     void this.request('recordShortcut', { active }).catch(() => undefined)
   }
 
+  /** Logs only the reason's kind, never anything that was read. */
+  private noteUnavailable(type: string, reason: unknown): void {
+    if (reason !== 'busy' && reason !== 'timeout') return
+    const key = `${type} ${reason}`
+    if (this.loggedUnavailable.has(key)) return
+    this.loggedUnavailable.add(key)
+    log.info(`${type} unavailable: ${reason}`)
+  }
+
   async getContext(maxChars: number): Promise<HelperContext | null> {
     try {
       const reply = await this.request('getContext', { maxChars }, 1200)
+      this.noteUnavailable('getContext', (reply.text as { reason?: unknown } | undefined)?.reason)
       return reply.ok ? (reply as unknown as HelperContext) : null
     } catch {
       return null
@@ -214,6 +232,7 @@ export class Helper extends EventEmitter<HelperEvents> {
   async getWindowText(maxChars: number): Promise<{ text: string; elapsedMs: number; source: string }> {
     try {
       const reply = await this.request('getWindowText', { maxChars }, 2500)
+      if (!reply.ok) this.noteUnavailable('getWindowText', reply.error)
       return {
         text: reply.ok && typeof reply.text === 'string' ? reply.text : '',
         elapsedMs: typeof reply.elapsedMs === 'number' ? reply.elapsedMs : 0,

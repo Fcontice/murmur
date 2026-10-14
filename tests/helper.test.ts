@@ -1,8 +1,12 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Helper } from '../src/main/helper'
 
+const logged = vi.hoisted(() => [] as string[])
 // helper.ts pulls in electron through these; the tests never start the native process.
-vi.mock('../src/main/log', () => ({ logger: () => ({ info: () => undefined, warn: () => undefined, error: () => undefined }) }))
+vi.mock('../src/main/log', () => {
+  const record = (...args: unknown[]) => void logged.push(args.map(String).join(' '))
+  return { logger: () => ({ info: record, warn: record, error: record }) }
+})
 vi.mock('../src/main/paths', () => ({ resourcePath: () => 'missing-helper.exe' }))
 
 /** A Helper whose wire requests are answered by `reply` instead of the native process. */
@@ -62,5 +66,45 @@ describe('Helper.getWindowText', () => {
   it('is unavailable when the request itself fails', async () => {
     const { helper } = stubbed(async () => Promise.reject(new Error('Helper is not running')))
     expect(await helper.getWindowText(4000)).toEqual({ text: '', elapsedMs: 0, source: 'unavailable' })
+  })
+})
+
+describe('Helper version', () => {
+  beforeEach(() => void (logged.length = 0))
+
+  const ready = (version?: string) => (new Helper() as any).onLine(JSON.stringify({ event: 'ready', version }))
+
+  it('warns when the helper speaks another protocol version', () => {
+    ready('1')
+    expect(logged).toContain('Helper version 1, expected 2: rebuild the helper')
+  })
+
+  it('stays quiet for the expected version', () => {
+    ready('2')
+    expect(logged.filter((line) => line.startsWith('Helper version'))).toEqual([])
+  })
+})
+
+describe('Helper unavailable reads', () => {
+  beforeEach(() => void (logged.length = 0))
+
+  it('logs a busy or timed-out read once per reason, without any text', async () => {
+    const { helper } = stubbed(async (type) =>
+      type === 'getWindowText' ? { ok: false, error: 'timeout', elapsedMs: 1500 } : { ok: true, app: {}, text: { available: false, reason: 'busy' } },
+    )
+    await helper.getWindowText(4000)
+    await helper.getWindowText(4000)
+    await helper.getContext(600)
+    await helper.getContext(600)
+    expect(logged).toEqual(['getWindowText unavailable: timeout', 'getContext unavailable: busy'])
+  })
+
+  it('does not log other reasons', async () => {
+    const { helper } = stubbed(async (type) =>
+      type === 'getWindowText' ? { ok: false, error: 'elevated' } : { ok: true, app: {}, text: { available: false, reason: 'no_focus' } },
+    )
+    await helper.getWindowText(4000)
+    await helper.getContext(600)
+    expect(logged).toEqual([])
   })
 })

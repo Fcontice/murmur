@@ -4,7 +4,8 @@ namespace Murmur.Helper;
 
 internal static class Program
 {
-    private const string Version = "1";
+    /// <summary>Protocol version; EXPECTED_HELPER_VERSION in src/main/helper.ts must match.</summary>
+    private const string Version = "2";
 
     [STAThread]
     private static int Main()
