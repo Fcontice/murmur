@@ -23,7 +23,7 @@ For command mode, the focused window's visible text is read on demand when nothi
 
 ## Install
 
-Run `dist\Murmur Setup 0.1.0.exe`. The installer is not code-signed, so Windows SmartScreen will ask for confirmation.
+Run `dist\Murmur Setup 0.2.0.exe`. The installer is not code-signed, so Windows SmartScreen will ask for confirmation.
 
 First launch walks through downloading models:
 
