@@ -78,6 +78,7 @@ URLs open through `shell.openExternal`, restricted to `http` and `https`. Apps l
 
 - No bare "search X" or "start X" triggers: both start too many ordinary sentences. Search is "search for", "look up" or "google"; open is "open", "open up", "launch", "go to" or "pull up".
 - Lookalike rules: an open target has at most 6 words and no clause words (a comma, a long "and", "then", "write", "make", "about"). Pronoun and filler targets ("open it", "open this up", "look up that") stay writing commands.
+- "Go to" and "pull up" are everyday writing phrases too. When what follows matches no site, app or domain ("go to the next paragraph"), the command runs as a writing instruction instead of a web search. "Open X" with no match still searches.
 - Spoken "dot" and "slash" are joined, so "github dot com slash murmur" opens `https://github.com/murmur`.
 - Domain detection needs a top-level domain from an allowlist, so file names like "next.js" or "notes.py" are not sites.
 - App matching was tuned on a probe of 210 real installed apps: whole-word matches beat prefix matches; documentation, help, installer and uninstaller entries are skipped unless asked for by name; "cmd" and "to do" are aliases for Command Prompt and Microsoft To Do.

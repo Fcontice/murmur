@@ -9,23 +9,24 @@ const commands = [saved('Spanish', 'Translate this into Spanish.'), saved('Bulle
 
 describe('routeCommand', () => {
   it.each([
-    ['open spotify', 'spotify'],
-    ['Open Spotify.', 'Spotify'],
-    ['um, open spotify', 'spotify'],
-    ['Okay, launch Visual Studio Code.', 'Visual Studio Code'],
-    ['go to github.com', 'github.com'],
-    ['Go to GitHub dot com.', 'GitHub dot com'],
-    ['pull up my gmail', 'my gmail'],
-    ['can you open the calculator please', 'calculator'],
-    ['open up teams', 'teams'],
-    ['Open. Spotify.', 'Spotify'],
-    ['open “Spotify”', 'Spotify'],
-    ['go to make.com', 'make.com'],
-    ['go to about.me', 'about.me'],
-    ['pull up Barnes and Noble', 'Barnes and Noble'],
-    ['open command and conquer', 'command and conquer'],
-  ])('%s opens %s', (spoken, target) => {
-    expect(routeCommand(spoken, commands)).toEqual({ kind: 'open', target })
+    ['open spotify', 'spotify', 'open'],
+    ['Open Spotify.', 'Spotify', 'open'],
+    ['um, open spotify', 'spotify', 'open'],
+    ['Okay, launch Visual Studio Code.', 'Visual Studio Code', 'launch'],
+    ['go to github.com', 'github.com', 'go to'],
+    ['Go to GitHub dot com.', 'GitHub dot com', 'go to'],
+    ['pull up my gmail', 'my gmail', 'pull up'],
+    ['can you open the calculator please', 'calculator', 'open'],
+    ['open up teams', 'teams', 'open up'],
+    ['Open. Spotify.', 'Spotify', 'open'],
+    ['open “Spotify”', 'Spotify', 'open'],
+    ['go to make.com', 'make.com', 'go to'],
+    ['go to about.me', 'about.me', 'go to'],
+    ['pull up Barnes and Noble', 'Barnes and Noble', 'pull up'],
+    ['open command and conquer', 'command and conquer', 'open'],
+    ['go to the next paragraph', 'next paragraph', 'go to'],
+  ])('%s opens %s', (spoken, target, trigger) => {
+    expect(routeCommand(spoken, commands)).toEqual({ kind: 'open', target, trigger })
   })
 
   it.each([
@@ -69,7 +70,7 @@ describe('routeCommand', () => {
   it('runs a saved command named like an app, but "open" still opens', () => {
     const spotify = [saved('Spotify')]
     expect(routeCommand('spotify', spotify)).toMatchObject({ kind: 'saved', command: { name: 'Spotify' } })
-    expect(routeCommand('open spotify', spotify)).toEqual({ kind: 'open', target: 'spotify' })
+    expect(routeCommand('open spotify', spotify)).toEqual({ kind: 'open', target: 'spotify', trigger: 'open' })
   })
 
   it.each(['', 'ok', 'um', '.'])('%j is empty', (spoken) => {

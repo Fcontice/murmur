@@ -381,6 +381,39 @@ describe('command actions', () => {
     expect(t.pills.some((pill) => /No app called "photoshop"/.test(pill.notice?.text ?? ''))).toBe(true)
   })
 
+  it('treats "go to" with nothing to open as a writing command', async () => {
+    const t = setup({ llmAvailable: true, transcript: 'go to the next paragraph', windowText: 'First paragraph.' })
+    await command(t)
+    expect(t.openUrl).not.toHaveBeenCalled()
+    expect(t.helper.launchApp).not.toHaveBeenCalled()
+    expect((t.llm.complete.mock.calls[0]![0] as { user: string }).user).toMatch(/<instruction>\nGo to the next paragraph\.?\n<\/instruction>/)
+    expect(t.helper.paste).toHaveBeenCalledWith('Rewritten text.', expect.anything())
+  })
+
+  it('treats "pull up" with nothing to open as a writing command', async () => {
+    const t = setup({ llmAvailable: true, transcript: 'pull up the hem' })
+    await command(t)
+    expect(t.openUrl).not.toHaveBeenCalled()
+    expect(t.llm.complete).toHaveBeenCalledOnce()
+  })
+
+  it('says a "go to" with nothing to open needs a language model, and searches nothing', async () => {
+    const t = setup({ llmAvailable: false, transcript: 'go to the next paragraph' })
+    await command(t)
+    expect(t.openUrl).not.toHaveBeenCalled()
+    expect(lastNotice(t)).toMatchObject({ notice: { kind: 'error', text: expect.stringMatching(/needs a language model/) } })
+  })
+
+  it('still opens a domain or an app after "go to"', async () => {
+    const site = setup({ transcript: 'go to example.com' })
+    await command(site)
+    expect(site.openUrl).toHaveBeenCalledWith('https://example.com')
+
+    const app = setup({ transcript: 'go to spotify' })
+    await command(app)
+    expect(app.helper.launchApp).toHaveBeenCalledWith('SpotifyAB.SpotifyMusic!Spotify')
+  })
+
   it('searches the web while the app list has never loaded', async () => {
     const t = setup({ transcript: 'open spotify' })
     t.helper.listApps.mockResolvedValue(null)

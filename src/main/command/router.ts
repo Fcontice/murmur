@@ -1,14 +1,22 @@
 import type { SavedCommand } from '@shared/types'
 
+const OPEN_TRIGGERS = ['open up', 'open', 'launch', 'go to', 'pull up'] as const
+const SEARCH_TRIGGERS = ['search the web for', 'search google for', 'search for', 'look up', 'google'] as const
+
+export type OpenTrigger = (typeof OPEN_TRIGGERS)[number]
+
 export type CommandRoute =
-  | { kind: 'open'; target: string }
+  | { kind: 'open'; target: string; trigger: OpenTrigger }
   | { kind: 'search'; query: string }
   | { kind: 'saved'; command: SavedCommand; extra: string }
   | { kind: 'write'; instruction: string }
   | { kind: 'empty' }
 
-const OPEN_TRIGGERS = ['open up', 'open', 'launch', 'go to', 'pull up']
-const SEARCH_TRIGGERS = ['search the web for', 'search google for', 'search for', 'look up', 'google']
+/**
+ * Triggers that are also everyday writing phrases ("go to the next paragraph", "pull up the hem"). When what
+ * follows names no site, app or domain, the command is a writing instruction rather than a web search.
+ */
+export const LOOSE_OPEN_TRIGGERS: ReadonlySet<OpenTrigger> = new Set(['go to', 'pull up'])
 /** An unknown open target becomes a web search, so a false "open" fires a browser: keep this strict. */
 const MAX_OPEN_WORDS = 6
 /** Words that point at the selection rather than name a place or a query. */
@@ -57,10 +65,10 @@ function triggerMatch(text: string, trigger: string): RegExpExecArray | null {
   return new RegExp(`^${escapeRegExp(trigger)}(?:$|[\\s,]|\\.(?=\\s|$))`, 'i').exec(text)
 }
 
-function afterTrigger(text: string, triggers: string[]): string | null {
+function afterTrigger<T extends string>(text: string, triggers: readonly T[]): { trigger: T; spoken: string } | null {
   for (const trigger of triggers) {
     const match = triggerMatch(text, trigger)
-    if (match) return unquote(rest(text, match[0].length))
+    if (match) return { trigger, spoken: unquote(rest(text, match[0].length)) }
   }
   return null
 }
@@ -74,7 +82,7 @@ function openTarget(spoken: string): string | null {
 }
 
 function searchQuery(text: string): string | null {
-  const query = afterTrigger(text, SEARCH_TRIGGERS)
+  const query = afterTrigger(text, SEARCH_TRIGGERS)?.spoken
   if (!query || NOT_A_TARGET.test(query)) return null
   // "google docs" is a search for Google Docs, not for "docs".
   const bare = /^(google)[\s,]+(\S+)$/i.exec(text)
@@ -90,9 +98,9 @@ export function routeCommand(transcript: string, saved: SavedCommand[]): Command
   const query = searchQuery(text)
   if (query) return { kind: 'search', query }
 
-  const spokenTarget = afterTrigger(text, OPEN_TRIGGERS)
-  const target = spokenTarget === null ? null : openTarget(spokenTarget)
-  if (target) return { kind: 'open', target }
+  const open = afterTrigger(text, OPEN_TRIGGERS)
+  const target = open === null ? null : openTarget(open.spoken)
+  if (open && target) return { kind: 'open', target, trigger: open.trigger }
 
   const names = saved
     .map((command) => ({ command, name: normalize(command.name) }))

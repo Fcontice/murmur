@@ -6,7 +6,7 @@ import { pcm16ToFloat32, peak, SAMPLE_RATE } from './asr/audio'
 import type { AsrService } from './asr/service'
 import { AppCatalog } from './command/apps'
 import { buildSearchUrl, resolveOpenTarget, type OpenTarget } from './command/resolve'
-import { routeCommand, type CommandRoute } from './command/router'
+import { LOOSE_OPEN_TRIGGERS, routeCommand, type CommandRoute } from './command/router'
 import type { Database } from './db'
 import type { Helper, HelperContext } from './helper'
 import { TruncatedError } from './llm/errors'
@@ -416,7 +416,16 @@ export class DictationController extends EventEmitter<{ pill: [PillState]; histo
 
     if (session.mode === 'command') {
       const instruction = basicCleanup(raw, { voiceCommands: false, removeFillers: true })
-      const route = routeCommand(instruction, db.listCommands())
+      let route: CommandRoute = routeCommand(instruction, db.listCommands())
+      const actionStarted = this.now()
+      let opening: OpenTarget | null = null
+      if (route.kind === 'open') {
+        const apps = await this.apps.apps()
+        if (session.cancelled) return
+        opening = resolveOpenTarget(route.target, db.listSites(), apps)
+        // "Go to the next paragraph" names no place: a loose trigger that finds nothing is not a search either.
+        if (opening.kind === 'search' && LOOSE_OPEN_TRIGGERS.has(route.trigger)) route = { kind: 'write', instruction }
+      }
       const saveAction = (outcome: { status: HistoryEntry['status']; error: string | null; finalText: string }) =>
         this.saveAction(session, { raw, app, durationMs, asrMs, startedProcessing, saveHistory: settings.saveHistory }, outcome)
       switch (route.kind) {
@@ -427,9 +436,9 @@ export class DictationController extends EventEmitter<{ pill: [PillState]; histo
           return
         case 'open':
         case 'search': {
-          const actionStarted = this.now()
-          const outcome = await this.runAction(session, route, settings.searchUrl)
-          if (!outcome) return
+          // An open route always has its target resolved above.
+          const target: OpenTarget = route.kind === 'open' ? opening! : { kind: 'search', query: route.query }
+          const outcome = await this.runAction(session, route, target, settings.searchUrl)
           saveAction(outcome)
           log.info(`Command done: ${route.kind} ${outcome.target}, ${this.now() - actionStarted} ms, ${outcome.status}`)
           return
@@ -547,22 +556,19 @@ export class DictationController extends EventEmitter<{ pill: [PillState]; histo
 
   /**
    * Opens an app, a site or a web search. Never reads the selection, calls the model or pastes.
-   * Returns null when the session was cancelled before anything was opened. Once the launch or the browser has been
-   * asked, the thing opens anyway, so a cancel after that point is ignored and the result is reported as usual.
+   * Once the launch or the browser has been asked, the thing opens anyway, so a cancel after that point is ignored
+   * and the result is reported as usual.
    */
-  private async runAction(session: Session, route: Extract<CommandRoute, { kind: 'open' | 'search' }>, searchUrl: string): Promise<ActionOutcome | null> {
-    const { db, helper, capture } = this.deps
+  private async runAction(
+    session: Session,
+    route: Extract<CommandRoute, { kind: 'open' | 'search' }>,
+    target: OpenTarget,
+    searchUrl: string,
+  ): Promise<ActionOutcome> {
+    const { helper, capture } = this.deps
     // A cancel ends the session, so a newer one may own the pill by the time the action reports back.
     const notice = (kind: 'info' | 'error', text: string) => {
       if (this.session === null || this.session === session) this.notice(kind, text)
-    }
-    let target: OpenTarget
-    if (route.kind === 'open') {
-      const apps = await this.apps.apps()
-      if (session.cancelled) return null
-      target = resolveOpenTarget(route.target, db.listSites(), apps)
-    } else {
-      target = { kind: 'search', query: route.query }
     }
 
     if (target.kind === 'app') {
