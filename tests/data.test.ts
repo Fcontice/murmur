@@ -183,4 +183,10 @@ describe('search url', () => {
     expect(validateSearchUrl('javascript:alert({query})')).toMatch(/https/)
     expect(validateSearchUrl('not a url {query}')).toMatch(/valid/)
   })
+
+  it('rejects file URLs and accepts an uppercase scheme or a repeated {query}', () => {
+    expect(validateSearchUrl('file:///{query}')).toMatch(/https/)
+    expect(validateSearchUrl('HTTPS://www.google.com/search?q={query}')).toBeNull()
+    expect(validateSearchUrl('https://example.com/{query}?q={query}')).toBeNull()
+  })
 })

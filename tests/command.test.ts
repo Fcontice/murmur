@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { SavedCommand } from '@shared/types'
+import type { InstalledApp, SavedCommand, Site } from '@shared/types'
+import { asDomainUrl, buildSearchUrl, findApp, resolveOpenTarget } from '../src/main/command/resolve'
 import { reservedNameProblem, routeCommand } from '../src/main/command/router'
 
 const saved = (name: string, prompt = `Do ${name}.`): SavedCommand => ({ id: name, name, prompt, createdAt: 0, uses: 0 })
@@ -136,5 +137,101 @@ describe('reservedNameProblem', () => {
 
   it('rejects names with no real word in them', () => {
     for (const name of ['ok', 'please', '   ']) expect(reservedNameProblem(name)).toMatch(/real word/)
+  })
+})
+
+const app = (name: string, id = `${name}.id`): InstalledApp => ({ name, id })
+const APPS = [
+  app('Spotify'), app('Microsoft Teams'), app('Visual Studio Code'), app('Character Map'), app('Calculator'),
+  app('Notepad'), app('Opera GX Browser'), app('Uninstall Node.js'), app('Node.js'), app('Warp'),
+]
+const site = (name: string, url: string): Site => ({ id: name, name, url, createdAt: 0 })
+
+describe('asDomainUrl', () => {
+  it.each([
+    ['github.com', 'https://github.com'],
+    ['GitHub dot com', 'https://github.com'],
+    ['news.ycombinator.com', 'https://news.ycombinator.com'],
+    ['https://example.com/a', 'https://example.com/a'],
+    ['example dot co dot uk', 'https://example.co.uk'],
+    ['open.ai', 'https://open.ai'],
+    ['HTTPS://GitHub.com', 'https://github.com'],
+    ['GitHub.com/Anthropics', 'https://github.com/Anthropics'],
+  ])('%s → %s', (spoken, url) => expect(asDomainUrl(spoken)).toBe(url))
+
+  it.each([
+    'spotify', 'my gmail', 'file.txt', 'javascript:alert(1)', 'a.b', 'localhost', '192.168.1.1',
+    'JAVASCRIPT:alert(1)', 'JavaScript:alert(document.domain)', 'file:///c:/windows', 'FILE:///C:/x', 'https://',
+  ])('%s is not a domain', (spoken) => {
+    expect(asDomainUrl(spoken)).toBeNull()
+  })
+
+  it('only ever returns http(s) URLs', () => {
+    expect(asDomainUrl('https://evil.com@good.com')).toMatch(/^https:\/\//)
+    expect(asDomainUrl('https://javascript:alert(1)')).toBeNull()
+  })
+})
+
+describe('findApp', () => {
+  it.each([
+    ['spotify', 'Spotify'],
+    ['Spotify app', 'Spotify'],
+    ['Spotify.', 'Spotify'],
+    ['teams', 'Microsoft Teams'],
+    ['VS Code', 'Visual Studio Code'],
+    ['visual studio code', 'Visual Studio Code'],
+    ['character map', 'Character Map'],
+    ['calc', 'Calculator'],
+    ['opera', 'Opera GX Browser'],
+    ['node', 'Node.js'],
+    ['warp', 'Warp'],
+    ['vsc', 'Visual Studio Code'],
+  ])('%s finds %s', (spoken, name) => expect(findApp(spoken, APPS)?.name).toBe(name))
+
+  it('never picks an uninstaller', () => {
+    expect(findApp('uninstall node', APPS)).toBeNull()
+    expect(findApp('uninstall', APPS)).toBeNull()
+  })
+
+  it.each(['photoshop', 'my gmail', '', 'no', 'ma', 'vs', 'the app'])('%s finds nothing', (spoken) => expect(findApp(spoken, APPS)).toBeNull())
+
+  it('does not read a random two-letter word as an acronym', () => {
+    const apps = [...APPS, app('Microsoft Access')]
+    expect(findApp('ma', apps)).toBeNull()
+    expect(findApp('microsoft access', apps)?.name).toBe('Microsoft Access')
+  })
+
+  it('does not stretch acronyms past four letters', () => {
+    const apps = [app('Alpha Beta Gamma Delta Epsilon')]
+    expect(findApp('abcd', [app('Alpha Bravo Charlie Delta')])?.name).toBe('Alpha Bravo Charlie Delta')
+    expect(findApp('abgde', apps)).toBeNull()
+  })
+})
+
+describe('resolveOpenTarget', () => {
+  const sites = [site('Gmail', 'https://mail.google.com'), site('Spotify', 'https://open.spotify.com')]
+
+  it('checks sites first, then apps, then domains, then searches', () => {
+    expect(resolveOpenTarget('my gmail', sites, APPS)).toEqual({ kind: 'url', url: 'https://mail.google.com', label: 'Gmail' })
+    expect(resolveOpenTarget('Spotify', sites, APPS)).toEqual({ kind: 'url', url: 'https://open.spotify.com', label: 'Spotify' })
+    expect(resolveOpenTarget('teams', sites, APPS)).toEqual({ kind: 'app', app: APPS[1] })
+    expect(resolveOpenTarget('github dot com', sites, APPS)).toEqual({ kind: 'url', url: 'https://github.com', label: 'github.com' })
+    expect(resolveOpenTarget('photoshop', sites, APPS)).toEqual({ kind: 'search', query: 'photoshop' })
+  })
+
+  it('never matches a site whose name is only filler', () => {
+    expect(resolveOpenTarget('the', [site('My', 'https://example.com')], APPS)).toEqual({ kind: 'search', query: 'the' })
+  })
+})
+
+describe('buildSearchUrl', () => {
+  it('encodes the query into the template', () => {
+    expect(buildSearchUrl('https://www.google.com/search?q={query}', 'C# & .NET 10?')).toBe('https://www.google.com/search?q=C%23%20%26%20.NET%2010%3F')
+  })
+  it('fills every {query} in the template', () => {
+    expect(buildSearchUrl('https://example.com/?q={query}&again={query}', 'a b')).toBe('https://example.com/?q=a%20b&again=a%20b')
+  })
+  it('falls back to Google for an unusable template', () => {
+    expect(buildSearchUrl('file:///c:/{query}', 'x')).toBe('https://www.google.com/search?q=x')
   })
 })

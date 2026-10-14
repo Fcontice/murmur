@@ -131,7 +131,7 @@ export const SEARCH_ENGINES: Array<{ name: string; url: string }> = [
 export function validateSearchUrl(url: string): string | null {
   if (!url.includes('{query}')) return 'The search URL must contain {query} where the search terms go.'
   try {
-    const parsed = new URL(url.replace('{query}', 'test'))
+    const parsed = new URL(url.replaceAll('{query}', 'test'))
     if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return 'The search URL must start with https:// or http://.'
   } catch {
     return 'That is not a valid web address.'
