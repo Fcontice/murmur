@@ -76,6 +76,16 @@ internal static class Program
                 case "copySelection":
                     Reply(request, new JsonObject { ["ok"] = true, ["text"] = paster.CopySelection() });
                     break;
+                case "listApps":
+                    Reply(request, AppsFolder.List());
+                    break;
+                case "launchApp":
+                    // Not "id": that field carries the request id.
+                    Reply(request, AppsFolder.Launch(request["appId"]?.GetValue<string>() ?? ""));
+                    break;
+                case "getWindowText":
+                    Reply(request, WindowText.Read(Math.Clamp(request["maxChars"]?.GetValue<int>() ?? 6000, 100, 20_000)));
+                    break;
                 case "testKeys" when KeyboardHook.AcceptInjected:
                     // Presses and releases keys in order: positive codes go down, negative come up.
                     foreach (var node in request["sequence"] as JsonArray ?? [])

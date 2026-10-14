@@ -15,6 +15,7 @@
     "test": "vitest run",
     "test:prompts": "vitest run --config vitest.eval.config.ts",
     "test:hook": "node scripts/helper-hook-test.cjs",
+    "test:helper": "node scripts/helper-commands-test.cjs",
     "helper:build": "dotnet publish helper/Murmur.Helper/Murmur.Helper.csproj -c Release -r win-x64 --self-contained true -o resources/helper --nologo -v q",
     "resources": "npm run helper:build && node scripts/fetch-llama.cjs && node scripts/make-icon.cjs",
     "dist": "npm run resources && electron-vite build && electron-builder --win --publish never"
