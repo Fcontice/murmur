@@ -2,9 +2,15 @@ import { randomUUID } from 'node:crypto'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import type { DictionaryEntry, HistoryEntry, Snippet, Stats } from '@shared/types'
+import type { DictionaryEntry, HistoryEntry, SavedCommand, Site, Snippet, Stats } from '@shared/types'
+import { commandKey, reservedNameProblem } from './command/router'
 
-const MIGRATIONS: string[] = [
+const MAX_NAME = 40
+const MAX_PROMPT = 1000
+const MAX_URL = 2000
+
+/** Append only: each entry runs once, in order, on the user's existing file. */
+export const MIGRATIONS: string[] = [
   `
   CREATE TABLE history (
     id TEXT PRIMARY KEY,
@@ -49,6 +55,26 @@ const MIGRATIONS: string[] = [
     speech_ms INTEGER NOT NULL DEFAULT 0
   );
   `,
+  `
+  CREATE TABLE commands (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    prompt TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    uses INTEGER NOT NULL DEFAULT 0
+  );
+  INSERT INTO commands (id, name, prompt, created_at) VALUES
+    ('example-spanish', 'Spanish', 'Translate this into Spanish. Keep names, numbers and formatting.', 0),
+    ('example-bulletize', 'Bulletize', 'Turn this into a short bulleted list, one idea per bullet.', 0),
+    ('example-shorten', 'Shorten', 'Make this about half as long. Keep every fact, name and request.', 0);
+
+  CREATE TABLE sites (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    url TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  `,
 ]
 
 type Row = Record<string, unknown>
@@ -86,6 +112,22 @@ function parseList(value: unknown): string[] {
   } catch {
     return []
   }
+}
+
+/** Accepts "mail.google.com" or a full http(s) address; anything else is refused. */
+function normaliseSiteUrl(input: string): string {
+  const text = input.trim()
+  const candidate = /^[a-z][a-z0-9+.-]*:/i.test(text) ? text : `https://${text}`
+  let url: URL
+  try {
+    url = new URL(candidate)
+  } catch {
+    throw new Error('Enter a web address like mail.google.com.')
+  }
+  if ((url.protocol !== 'https:' && url.protocol !== 'http:') || !url.hostname.includes('.')) throw new Error('Enter a web address like mail.google.com.')
+  // "user@host" hides the real host from a quick read, as in the resolver.
+  if (url.username || url.password) throw new Error('Enter a web address like mail.google.com, without a user name or password.')
+  return url.toString().replace(/\/$/, '')
 }
 
 export class Database {
@@ -262,6 +304,81 @@ export class Database {
 
   deleteSnippet(id: string): void {
     this.db.prepare('DELETE FROM snippets WHERE id = ?').run(id)
+  }
+
+  // Saved commands
+
+  listCommands(): SavedCommand[] {
+    const rows = this.db.prepare('SELECT * FROM commands ORDER BY created_at DESC, name').all() as Row[]
+    return rows.map((row) => ({
+      id: row.id as string,
+      name: row.name as string,
+      prompt: row.prompt as string,
+      createdAt: row.created_at as number,
+      uses: row.uses as number,
+    }))
+  }
+
+  saveCommand(input: { id?: string; name: string; prompt: string }): SavedCommand {
+    const name = input.name.trim()
+    const prompt = input.prompt.trim()
+    if (!name) throw new Error('Enter the name you will say.')
+    if (!prompt) throw new Error('Enter the instruction to run.')
+    if (name.length > MAX_NAME) throw new Error(`Keep the name to ${MAX_NAME} characters or fewer.`)
+    if (prompt.length > MAX_PROMPT) throw new Error(`Keep the instruction to ${MAX_PROMPT} characters or fewer.`)
+    const reserved = reservedNameProblem(name)
+    if (reserved) throw new Error(reserved)
+    // Compare the way the router matches, so "Please fix" cannot hide behind "Fix".
+    const key = commandKey(name)
+    const clash = this.listCommands().find((command) => command.id !== input.id && commandKey(command.name) === key)
+    if (clash) throw new Error(`A command called "${clash.name}" already exists.`)
+
+    if (input.id) {
+      const result = this.db.prepare('UPDATE commands SET name = ?, prompt = ? WHERE id = ?').run(name, prompt, input.id)
+      if (Number(result.changes) === 0) throw new Error('That command no longer exists.')
+    } else {
+      input = { ...input, id: randomUUID() }
+      this.db.prepare('INSERT INTO commands (id, name, prompt, created_at) VALUES (?, ?, ?, ?)').run(input.id!, name, prompt, Date.now())
+    }
+    return this.listCommands().find((command) => command.id === input.id)!
+  }
+
+  deleteCommand(id: string): void {
+    this.db.prepare('DELETE FROM commands WHERE id = ?').run(id)
+  }
+
+  recordCommandUse(id: string): void {
+    this.db.prepare('UPDATE commands SET uses = uses + 1 WHERE id = ?').run(id)
+  }
+
+  // Sites
+
+  listSites(): Site[] {
+    const rows = this.db.prepare('SELECT * FROM sites ORDER BY name').all() as Row[]
+    return rows.map((row) => ({ id: row.id as string, name: row.name as string, url: row.url as string, createdAt: row.created_at as number }))
+  }
+
+  saveSite(input: { id?: string; name: string; url: string }): Site {
+    const name = input.name.trim()
+    if (!name) throw new Error('Enter the name you will say.')
+    if (name.length > MAX_NAME) throw new Error(`Keep the name to ${MAX_NAME} characters or fewer.`)
+    const url = normaliseSiteUrl(input.url)
+    if (url.length > MAX_URL) throw new Error(`Keep the web address to ${MAX_URL} characters or fewer.`)
+    const clash = this.db.prepare('SELECT id FROM sites WHERE name = ? COLLATE NOCASE').get(name) as { id: string } | undefined
+    if (clash && clash.id !== input.id) throw new Error(`A site called "${name}" already exists.`)
+
+    if (input.id) {
+      const result = this.db.prepare('UPDATE sites SET name = ?, url = ? WHERE id = ?').run(name, url, input.id)
+      if (Number(result.changes) === 0) throw new Error('That site no longer exists.')
+    } else {
+      input = { ...input, id: randomUUID() }
+      this.db.prepare('INSERT INTO sites (id, name, url, created_at) VALUES (?, ?, ?, ?)').run(input.id!, name, url, Date.now())
+    }
+    return this.listSites().find((entry) => entry.id === input.id)!
+  }
+
+  deleteSite(id: string): void {
+    this.db.prepare('DELETE FROM sites WHERE id = ?').run(id)
   }
 
   recordUses(dictionaryIds: string[], snippetIds: string[]): void {

@@ -1,8 +1,12 @@
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_SHORTCUTS, SEARCH_ENGINES, sameKeys, shortcutLabel, validateSearchUrl, validateShortcut, VK } from '@shared/settings'
 import type { HistoryEntry } from '@shared/types'
 import { encodeWav, levelFromDb, pcm16ToFloat32, peak, rmsDb, splitAtPauses } from '../src/main/asr/audio'
-import { Database } from '../src/main/db'
+import { Database, MIGRATIONS } from '../src/main/db'
 import { splitOnLineCommands } from '../src/main/text/cleanup'
 import { runPipeline, splitForModel } from '../src/main/text/pipeline'
 
@@ -188,5 +192,137 @@ describe('search url', () => {
     expect(validateSearchUrl('file:///{query}')).toMatch(/https/)
     expect(validateSearchUrl('HTTPS://www.google.com/search?q={query}')).toBeNull()
     expect(validateSearchUrl('https://example.com/{query}?q={query}')).toBeNull()
+  })
+})
+
+describe('saved commands', () => {
+  it('ships with editable examples', () => {
+    const db = new Database(':memory:')
+    expect(db.listCommands().map((command) => command.name).sort()).toEqual(['Bulletize', 'Shorten', 'Spanish'])
+  })
+
+  it('saves, rejects clashes and reserved names, and deletes', () => {
+    const db = new Database(':memory:')
+    const created = db.saveCommand({ name: '  Friendly  ', prompt: 'Make this warmer.' })
+    expect(created).toMatchObject({ name: 'Friendly', prompt: 'Make this warmer.', uses: 0 })
+    expect(() => db.saveCommand({ name: 'friendly', prompt: 'x' })).toThrow(/already/)
+    expect(() => db.saveCommand({ name: 'Open sesame', prompt: 'x' })).toThrow(/open/i)
+    expect(() => db.saveCommand({ name: 'X', prompt: '  ' })).toThrow(/instruction/i)
+    expect(() => db.saveCommand({ name: ' ', prompt: 'x' })).toThrow(/name/i)
+    db.saveCommand({ id: created.id, name: 'Friendly', prompt: 'Warmer, please.' })
+    expect(db.listCommands().find((command) => command.id === created.id)?.prompt).toBe('Warmer, please.')
+    db.recordCommandUse(created.id)
+    expect(db.listCommands().find((command) => command.id === created.id)?.uses).toBe(1)
+    db.deleteCommand(created.id)
+    expect(db.listCommands().some((command) => command.id === created.id)).toBe(false)
+  })
+
+  it('treats names the router cannot tell apart as clashes', () => {
+    const db = new Database(':memory:')
+    const fix = db.saveCommand({ name: 'Fix', prompt: 'Fix the grammar.' })
+    expect(() => db.saveCommand({ name: 'Please fix', prompt: 'x' })).toThrow(/already/)
+    expect(() => db.saveCommand({ name: 'fix.', prompt: 'x' })).toThrow(/already/)
+    expect(db.saveCommand({ id: fix.id, name: 'Fix.', prompt: 'Fix the grammar.' }).name).toBe('Fix.')
+    expect(db.saveCommand({ name: 'Fix it', prompt: 'x' }).name).toBe('Fix it')
+  })
+
+  it('bounds name and instruction length', () => {
+    const db = new Database(':memory:')
+    expect(() => db.saveCommand({ name: 'n'.repeat(41), prompt: 'x' })).toThrow(/40/)
+    expect(() => db.saveCommand({ name: 'Long', prompt: 'p'.repeat(1001) })).toThrow(/1000/)
+    expect(db.saveCommand({ name: 'n'.repeat(40), prompt: 'p'.repeat(1000) }).prompt).toHaveLength(1000)
+  })
+
+  it('refuses to update a command that no longer exists', () => {
+    const db = new Database(':memory:')
+    expect(() => db.saveCommand({ id: 'gone', name: 'Ghost', prompt: 'x' })).toThrow('That command no longer exists.')
+  })
+})
+
+describe('sites', () => {
+  it('saves http(s) sites only and rejects duplicate names', () => {
+    const db = new Database(':memory:')
+    expect(db.listSites()).toEqual([])
+    const gmail = db.saveSite({ name: 'Gmail', url: 'mail.google.com' })
+    expect(gmail).toMatchObject({ name: 'Gmail', url: 'https://mail.google.com' })
+    expect(() => db.saveSite({ name: 'gmail', url: 'https://x.com' })).toThrow(/already/)
+    expect(() => db.saveSite({ name: 'Bad', url: 'javascript:alert(1)' })).toThrow(/web address/)
+    expect(() => db.saveSite({ name: 'Files', url: 'file:///c:/' })).toThrow(/web address/)
+    db.deleteSite(gmail.id)
+    expect(db.listSites()).toEqual([])
+  })
+
+  it('refuses addresses that hide the real host behind a user name', () => {
+    const db = new Database(':memory:')
+    expect(() => db.saveSite({ name: 'Sneaky', url: 'https://user:pw@x.com' })).toThrow(/web address/)
+    expect(() => db.saveSite({ name: 'Sneaky', url: 'mail.google.com@evil.com' })).toThrow(/web address/)
+  })
+
+  it('bounds name and address length', () => {
+    const db = new Database(':memory:')
+    expect(() => db.saveSite({ name: 'n'.repeat(41), url: 'x.com' })).toThrow(/40/)
+    expect(() => db.saveSite({ name: 'Long', url: `x.com/${'a'.repeat(2000)}` })).toThrow(/2000/)
+  })
+
+  it('refuses to update a site that no longer exists', () => {
+    const db = new Database(':memory:')
+    expect(() => db.saveSite({ id: 'gone', name: 'Ghost', url: 'x.com' })).toThrow('That site no longer exists.')
+  })
+})
+
+describe('database file', () => {
+  /** Opens, reads and closes before any assertion runs, so a failure never leaves the file locked. */
+  function read<T>(file: string, query: (db: Database) => T): T {
+    const db = new Database(file)
+    try {
+      return query(db)
+    } finally {
+      db.close()
+    }
+  }
+
+  function userVersion(file: string): number {
+    const raw = new DatabaseSync(file)
+    try {
+      return (raw.prepare('PRAGMA user_version').get() as { user_version: number }).user_version
+    } finally {
+      raw.close()
+    }
+  }
+
+  function inTempDir(test: (file: string) => void): void {
+    const dir = mkdtempSync(join(tmpdir(), 'murmur-db-'))
+    try {
+      test(join(dir, 'murmur.sqlite'))
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
+
+  it('migrates a new file once and reopens it cleanly', () => {
+    inTempDir((file) => {
+      read(file, () => undefined)
+      expect(read(file, (db) => db.listCommands())).toHaveLength(3)
+      expect(userVersion(file)).toBe(2)
+    })
+  })
+
+  it('upgrades a version 1 file without losing history', () => {
+    inTempDir((file) => {
+      const raw = new DatabaseSync(file)
+      try {
+        raw.exec(MIGRATIONS[0]!)
+        raw.exec('PRAGMA user_version = 1')
+        raw.prepare(`INSERT INTO history (id, created_at, mode, raw_text, final_text, status) VALUES ('old', 1000, 'dictate', 'raw', 'Kept.', 'pasted')`).run()
+      } finally {
+        raw.close()
+      }
+
+      const { history, commands, sites } = read(file, (db) => ({ history: db.listHistory('', 10, 0), commands: db.listCommands(), sites: db.listSites() }))
+      expect(history.map((item) => [item.id, item.finalText])).toEqual([['old', 'Kept.']])
+      expect(commands).toHaveLength(3)
+      expect(sites).toEqual([])
+      expect(userVersion(file)).toBe(2)
+    })
   })
 })

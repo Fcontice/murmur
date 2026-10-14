@@ -109,9 +109,14 @@ export function routeCommand(transcript: string, saved: SavedCommand[]): Command
   return { kind: 'write', instruction: text }
 }
 
+/** Two saved names with the same key would shadow each other in `routeCommand`. */
+export function commandKey(name: string): string {
+  return normalize(name).toLowerCase()
+}
+
 /** A saved command named like an action trigger, or named only with filler, could never run. */
 export function reservedNameProblem(name: string): string | null {
-  const lower = normalize(name).toLowerCase()
+  const lower = commandKey(name)
   if (!lower) return 'Use a name with a real word in it, not just "ok" or "please".'
   for (const trigger of [...OPEN_TRIGGERS, ...SEARCH_TRIGGERS]) {
     if (triggerMatch(lower, trigger)) {

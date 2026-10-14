@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { InstalledApp, SavedCommand, Site } from '@shared/types'
 import { asDomainUrl, buildSearchUrl, findApp, resolveOpenTarget } from '../src/main/command/resolve'
-import { reservedNameProblem, routeCommand } from '../src/main/command/router'
+import { commandKey, reservedNameProblem, routeCommand } from '../src/main/command/router'
 
 const saved = (name: string, prompt = `Do ${name}.`): SavedCommand => ({ id: name, name, prompt, createdAt: 0, uses: 0 })
 const commands = [saved('Spanish', 'Translate this into Spanish.'), saved('Bulletize'), saved('Make it formal')]
@@ -137,6 +137,15 @@ describe('reservedNameProblem', () => {
 
   it('rejects names with no real word in them', () => {
     for (const name of ['ok', 'please', '   ']) expect(reservedNameProblem(name)).toMatch(/real word/)
+  })
+})
+
+describe('commandKey', () => {
+  it('gives names the router cannot tell apart the same key', () => {
+    expect(commandKey('Fix')).toBe('fix')
+    expect(commandKey('  Please fix. ')).toBe('fix')
+    expect(commandKey('so, FIX!')).toBe('fix')
+    expect(commandKey('Fix it')).not.toBe(commandKey('Fix'))
   })
 })
 
