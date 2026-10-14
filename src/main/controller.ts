@@ -4,6 +4,9 @@ import { shortcutLabel } from '@shared/settings'
 import type { AppContext, DictationMode, HistoryEntry, PillState, Settings, ShortcutAction, TextContext } from '@shared/types'
 import { pcm16ToFloat32, peak, SAMPLE_RATE } from './asr/audio'
 import type { AsrService } from './asr/service'
+import { AppCatalog } from './command/apps'
+import { buildSearchUrl, resolveOpenTarget, type OpenTarget } from './command/resolve'
+import { routeCommand, type CommandRoute } from './command/router'
 import type { Database } from './db'
 import type { Helper, HelperContext } from './helper'
 import { buildCommandRequest, restoreTags, tidyModelOutput } from './llm/prompts'
@@ -26,6 +29,14 @@ const CAPTURE_STOP_TIMEOUT_MS = 1200
 const NOTICE_MS = 4200
 const CONTEXT_CHARS = 600
 const MAX_COMMAND_SELECTION_CHARS = 12_000
+const SCREEN_CHARS = 6000
+const REMOTE_SCREEN_NOTICE = 'Screen text is only shared with the built-in model, so this command ran without it.'
+
+function assertNever(value: never): never {
+  throw new Error(`Unhandled case: ${JSON.stringify(value)}`)
+}
+
+type WindowText = Awaited<ReturnType<Helper['getWindowText']>>
 
 export type SoundName = 'start' | 'stop' | 'lock' | 'error'
 
@@ -45,6 +56,8 @@ interface Session {
   cancelled: boolean
   chunks: Int16Array[]
   context: Promise<HelperContext | null>
+  /** Text of the focused window, read only for command mode with the built-in model. */
+  screen: Promise<WindowText | null>
   tapTimer: NodeJS.Timeout | null
   maxTimer: NodeJS.Timeout | null
   onCaptureStopped: (() => void) | null
@@ -59,8 +72,11 @@ export interface ControllerDeps {
   llm: LlmService
   db: Database
   capture: CaptureBridge
+  openUrl: (url: string) => Promise<void>
   now?: () => number
 }
+
+type ActionOutcome = { status: 'action' | 'failed'; error: string | null; finalText: string; target: OpenTarget['kind'] }
 
 export class DictationController extends EventEmitter<{ pill: [PillState]; history: [HistoryEntry] }> {
   private phase: Phase = 'idle'
@@ -68,14 +84,24 @@ export class DictationController extends EventEmitter<{ pill: [PillState]; histo
   private noticeTimer: NodeJS.Timeout | null = null
   private lastText = ''
   private readonly now: () => number
+  private readonly apps: AppCatalog
+  private remoteScreenNoticeShown = false
   /** Diagnostics: the next dictation transcribes this audio instead of what the microphone recorded. */
   audioOverride: Int16Array | null = null
+  /** Diagnostics: command actions hand their URL here instead of opening the browser. */
+  urlOverride: ((url: string) => void) | null = null
   /** Diagnostics: only insert text while a process with this name is in the foreground. */
   requireForeground: string | null = null
 
   constructor(private readonly deps: ControllerDeps) {
     super()
     this.now = deps.now ?? Date.now
+    this.apps = new AppCatalog(() => deps.helper.listApps())
+  }
+
+  /** Loads the installed-apps list in the background so the first "open" does not wait for it. */
+  warmApps(): void {
+    this.apps.warm()
   }
 
   get pillState(): PillState {
@@ -141,6 +167,7 @@ export class DictationController extends EventEmitter<{ pill: [PillState]; histo
         else if (active && session.mode === 'dictate' && !session.locked && this.now() - session.startedAt < OTHER_SHORTCUT_GRACE_MS) {
           // The command chord contains the dictation chord, so dictation starts first and is upgraded here.
           session.mode = 'command'
+          session.screen = this.readScreen()
           this.syncPill()
         }
         break
@@ -191,11 +218,6 @@ export class DictationController extends EventEmitter<{ pill: [PillState]; histo
       this.notice(asr.state === 'loading' ? 'info' : 'error', asr.state === 'loading' ? 'The speech model is still loading. Try again in a moment.' : asr.detail || 'No speech model is set up. Open Murmur to finish setup.')
       return
     }
-    if (mode === 'command' && !this.deps.llm.available) {
-      this.notice('error', 'Command mode needs a language model. Turn on AI clean-up in Settings.')
-      return
-    }
-
     if (this.noticeTimer) clearTimeout(this.noticeTimer)
     this.noticeTimer = null
 
@@ -209,6 +231,7 @@ export class DictationController extends EventEmitter<{ pill: [PillState]; histo
       chunks: [],
       // Read the target before anything of ours can disturb focus.
       context: this.deps.settings().useAppContext || mode === 'command' ? helper.getContext(CONTEXT_CHARS) : Promise.resolve(null),
+      screen: mode === 'command' ? this.readScreen() : Promise.resolve(null),
       tapTimer: null,
       maxTimer: null,
       onCaptureStopped: null,
@@ -219,6 +242,12 @@ export class DictationController extends EventEmitter<{ pill: [PillState]; histo
     this.syncPill()
     helper.setCapturing(true)
     capture.start(session.id)
+  }
+
+  /** Screen text never leaves the machine: only the built-in model gets it, so nothing else reads it. */
+  private readScreen(): Promise<WindowText | null> {
+    if (this.deps.settings().llmProvider !== 'local') return Promise.resolve(null)
+    return this.deps.helper.getWindowText(SCREEN_CHARS).catch(() => null)
   }
 
   captureStarted(sessionId: string): void {
@@ -355,16 +384,59 @@ export class DictationController extends EventEmitter<{ pill: [PillState]; histo
     let llmMs = 0
     let dictionaryIds: string[] = []
     let snippetIds: string[] = []
+    /** Shown only once the text is in, so it never hides an error. */
+    let pendingNotice: string | null = null
 
     if (session.mode === 'command') {
-      const llmStarted = this.now()
-      const selection = textContext.selected || (await helper.copySelection())
-      if (selection.length > MAX_COMMAND_SELECTION_CHARS) throw new Error('The selection is too long for command mode. Select a shorter passage.')
       const instruction = basicCleanup(raw, { voiceCommands: false, removeFillers: true })
-      text = restoreTags(tidyModelOutput(await llm.complete(buildCommandRequest({ instruction, selection, screenText: '', appName: app.name }))))
-      if (!text) throw new Error('The model returned nothing. Try rephrasing the instruction.')
-      usedLlm = true
-      llmMs = this.now() - llmStarted
+      const route = routeCommand(instruction, db.listCommands())
+      const saveAction = (outcome: { status: HistoryEntry['status']; error: string | null; finalText: string }) =>
+        this.saveAction(session, { raw, app, durationMs, asrMs, startedProcessing, saveHistory: settings.saveHistory }, outcome)
+      switch (route.kind) {
+        case 'empty':
+          this.notice('info', "Didn't catch a command. Try again.")
+          saveAction({ status: 'empty', error: null, finalText: '' })
+          log.info(`Command done: empty, ${this.now() - startedProcessing} ms, empty`)
+          return
+        case 'open':
+        case 'search': {
+          const actionStarted = this.now()
+          const outcome = await this.runAction(session, route, settings.searchUrl)
+          if (!outcome) return
+          saveAction(outcome)
+          log.info(`Command done: ${route.kind} ${outcome.target}, ${this.now() - actionStarted} ms, ${outcome.status}`)
+          return
+        }
+        case 'saved':
+        case 'write': {
+          if (!llm.available) throw new Error('Command mode needs a language model. Turn on AI clean-up in Settings.')
+          const llmStarted = this.now()
+          const selection = textContext.selected || (await helper.copySelection())
+          if (session.cancelled) return
+          if (selection.length > MAX_COMMAND_SELECTION_CHARS) throw new Error('The selection is too long for command mode. Select a shorter passage.')
+          let screenText = ''
+          if (!selection.trim()) {
+            if (settings.llmProvider === 'local') {
+              screenText = (await session.screen)?.text ?? ''
+              if (session.cancelled) return
+              if (screenText) log.info(`Screen text: ${screenText.length} chars`)
+            } else if (!this.remoteScreenNoticeShown) {
+              pendingNotice = REMOTE_SCREEN_NOTICE
+            }
+          }
+          const spoken =
+            route.kind === 'saved' ? route.command.prompt + (route.extra ? `\n\nAlso: ${route.extra}` : '') : route.instruction
+          text = restoreTags(tidyModelOutput(await llm.complete(buildCommandRequest({ instruction: spoken, selection, screenText, appName: app.name }))))
+          if (session.cancelled) return
+          if (!text) throw new Error('The model returned nothing. Try rephrasing the instruction.')
+          if (route.kind === 'saved') db.recordCommandUse(route.command.id)
+          usedLlm = true
+          llmMs = this.now() - llmStarted
+          break
+        }
+        default:
+          assertNever(route)
+      }
     } else {
       const result = await runPipeline({
         raw,
@@ -391,6 +463,8 @@ export class DictationController extends EventEmitter<{ pill: [PillState]; histo
       })
       if (pasted.ok) {
         status = 'pasted'
+        if (pendingNotice === REMOTE_SCREEN_NOTICE) this.remoteScreenNoticeShown = true
+        if (pendingNotice) this.notice('info', pendingNotice)
       } else if (pasted.error === 'focus_changed') {
         status = 'failed'
         error = pasted.error
@@ -429,6 +503,85 @@ export class DictationController extends EventEmitter<{ pill: [PillState]; histo
     db.recordUses(dictionaryIds, snippetIds)
     this.emit('history', entry)
     log.info(`Dictation done: ${durationMs} ms audio, asr ${asrMs} ms, llm ${llmMs} ms, ${entry.wordCount} words, ${status}`)
+  }
+
+  /**
+   * Opens an app, a site or a web search. Never reads the selection, calls the model or pastes.
+   * Returns null when the session was cancelled on the way.
+   */
+  private async runAction(session: Session, route: Extract<CommandRoute, { kind: 'open' | 'search' }>, searchUrl: string): Promise<ActionOutcome | null> {
+    const { db, helper, capture } = this.deps
+    let target: OpenTarget
+    if (route.kind === 'open') {
+      const apps = await this.apps.apps()
+      if (session.cancelled) return null
+      target = resolveOpenTarget(route.target, db.listSites(), apps)
+    } else {
+      target = { kind: 'search', query: route.query }
+    }
+
+    if (target.kind === 'app') {
+      const { name, id } = target.app
+      const launched = await helper.launchApp(id)
+      if (session.cancelled) return null
+      if (!launched) {
+        this.notice('error', `Could not open ${name}.`)
+        return { status: 'failed', error: 'launch_failed', finalText: `Open ${name}`, target: target.kind }
+      }
+      this.notice('info', `Opening ${name}`)
+      return { status: 'action', error: null, finalText: `Opened ${name}`, target: target.kind }
+    }
+
+    const url = target.kind === 'url' ? target.url : buildSearchUrl(searchUrl, target.query)
+    try {
+      if (this.urlOverride) this.urlOverride(url)
+      else await this.deps.openUrl(url)
+    } catch {
+      if (session.cancelled) return null
+      // The error text may contain the URL, so it stays out of the log.
+      log.warn('Could not open the browser')
+      capture.copyToClipboard(url)
+      this.notice('error', 'Could not open the browser. The link is on your clipboard.')
+      return { status: 'failed', error: 'open_failed', finalText: url, target: target.kind }
+    }
+    if (session.cancelled) return null
+    this.notice(
+      'info',
+      target.kind === 'url'
+        ? `Opening ${target.label}`
+        : route.kind === 'open'
+          ? `No app called "${route.target}" found. Searched the web.`
+          : `Searching for "${route.query}"`,
+    )
+    return { status: 'action', error: null, finalText: url, target: target.kind }
+  }
+
+  /** History for a command that pasted nothing. Its words are zero so actions never inflate the stats. */
+  private saveAction(
+    session: Session,
+    base: { raw: string; app: AppContext; durationMs: number; asrMs: number; startedProcessing: number; saveHistory: boolean },
+    outcome: { status: HistoryEntry['status']; error: string | null; finalText: string },
+  ): void {
+    const entry = this.deps.db.addHistory(
+      {
+        createdAt: session.startedAt,
+        mode: session.mode,
+        rawText: base.raw,
+        finalText: outcome.finalText,
+        status: outcome.status,
+        error: outcome.error,
+        appName: base.app.name,
+        appProcess: base.app.process,
+        durationMs: base.durationMs,
+        wordCount: 0,
+        asrMs: base.asrMs,
+        llmMs: 0,
+        totalMs: this.now() - base.startedProcessing,
+        usedLlm: false,
+      },
+      base.saveHistory,
+    )
+    this.emit('history', entry)
   }
 
   private async pasteLast(): Promise<void> {

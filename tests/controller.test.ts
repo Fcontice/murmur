@@ -4,11 +4,28 @@ import type { HistoryEntry, PillState, Settings } from '@shared/types'
 import { DictationController, TAP_WINDOW_MS, type ControllerDeps } from '../src/main/controller'
 import { Database } from '../src/main/db'
 
-vi.mock('../src/main/log', () => ({ logger: () => ({ info: () => undefined, warn: () => undefined, error: () => undefined }) }))
+const logged = vi.hoisted(() => [] as string[])
+vi.mock('../src/main/log', () => {
+  const record = (...args: unknown[]) => void logged.push(args.map(String).join(' '))
+  return { logger: () => ({ info: vi.fn(record), warn: vi.fn(record), error: vi.fn(record) }) }
+})
 
 const speech = () => new Int16Array(16_000).fill(6000) // one second, clearly not silence
 
-function setup(overrides: { settings?: Partial<Settings>; asrState?: string; llmAvailable?: boolean; transcript?: string; pasteOk?: boolean; selected?: string } = {}) {
+function setup(
+  overrides: {
+    settings?: Partial<Settings>
+    asrState?: string
+    llmAvailable?: boolean
+    transcript?: string
+    pasteOk?: boolean
+    selected?: string
+    apps?: Array<{ name: string; id: string }>
+    launchOk?: boolean
+    windowText?: string
+    openFails?: boolean
+  } = {},
+) {
   const settings = { ...DEFAULT_SETTINGS, ...overrides.settings }
   const db = new Database(':memory:')
   const capture = { start: vi.fn(), stop: vi.fn(), sound: vi.fn(), copyToClipboard: vi.fn() }
@@ -20,10 +37,19 @@ function setup(overrides: { settings?: Partial<Settings>; asrState?: string; llm
     })),
     copySelection: vi.fn(async () => ''),
     paste: vi.fn(async () => (overrides.pasteOk === false ? { ok: false, error: 'input_blocked' } : { ok: true })),
+    listApps: vi.fn(
+      async (): Promise<Array<{ name: string; id: string }> | null> =>
+        overrides.apps ?? [{ name: 'Spotify', id: 'SpotifyAB.SpotifyMusic!Spotify' }, { name: 'Character Map', id: 'charmap' }],
+    ),
+    launchApp: vi.fn(async () => overrides.launchOk ?? true),
+    getWindowText: vi.fn(async () => ({ text: overrides.windowText ?? '', elapsedMs: 5, source: 'focused_document' })),
   }
   const asr = { state: overrides.asrState ?? 'ready', detail: '', transcribe: vi.fn(async () => overrides.transcript ?? 'hello world') }
   const llm = { available: overrides.llmAvailable ?? false, complete: vi.fn(async (_request: { user: string }) => 'Rewritten text.') }
-  const controller = new DictationController({ settings: () => settings, helper, asr, llm, db, capture } as unknown as ControllerDeps)
+  const openUrl = vi.fn(async (_url: string) => {
+    if (overrides.openFails) throw new Error('no browser')
+  })
+  const controller = new DictationController({ settings: () => settings, helper, asr, llm, db, capture, openUrl } as unknown as ControllerDeps)
 
   const pills: PillState[] = []
   const history: HistoryEntry[] = []
@@ -41,10 +67,24 @@ function setup(overrides: { settings?: Partial<Settings>; asrState?: string; llm
     controller.captureStopped(sessionId())
     await vi.runAllTimersAsync()
   }
-  return { controller, capture, helper, asr, llm, db, pills, history, record, settle, sessionId }
+  return { controller, capture, helper, asr, llm, db, openUrl, pills, history, record, settle, sessionId }
 }
 
-beforeEach(() => vi.useFakeTimers())
+const command = async (t: ReturnType<typeof setup>) => {
+  t.controller.handleShortcut('command', 'down')
+  t.record()
+  vi.advanceTimersByTime(900)
+  t.controller.handleShortcut('command', 'up')
+  await t.settle()
+}
+
+/** `settle` runs every timer, so the notice has already timed out back to idle; this finds what was shown. */
+const lastNotice = (t: ReturnType<typeof setup>) => t.pills.filter((pill) => pill.phase === 'notice').at(-1)
+
+beforeEach(() => {
+  vi.useFakeTimers()
+  logged.length = 0
+})
 afterEach(() => vi.useRealTimers())
 
 describe('push to talk', () => {
@@ -202,11 +242,157 @@ describe('command mode', () => {
     expect(t.history[0]).toMatchObject({ mode: 'command', usedLlm: true })
   })
 
-  it('refuses to start without a language model', () => {
-    const t = setup({ llmAvailable: false })
+  it('opens apps without a language model', async () => {
+    const t = setup({ llmAvailable: false, transcript: 'open spotify' })
+    await command(t)
+    expect(t.helper.launchApp).toHaveBeenCalledWith('SpotifyAB.SpotifyMusic!Spotify')
+    expect(t.helper.paste).not.toHaveBeenCalled()
+    expect(t.helper.copySelection).not.toHaveBeenCalled()
+    expect(t.history[0]).toMatchObject({ mode: 'command', status: 'action', finalText: 'Opened Spotify', wordCount: 0 })
+    expect(t.pills.find((pill) => pill.notice)?.notice?.text).toBe('Opening Spotify')
+  })
+
+  it('explains that writing commands need a language model', async () => {
+    const t = setup({ llmAvailable: false, transcript: 'make this shorter' })
+    await command(t)
+    expect(t.helper.paste).not.toHaveBeenCalled()
+    expect(lastNotice(t)).toMatchObject({ phase: 'notice', notice: { kind: 'error', text: expect.stringMatching(/language model/) } })
+  })
+
+  it('does nothing with an empty command', async () => {
+    const t = setup({ llmAvailable: true, transcript: 'um' })
+    await command(t)
+    expect(t.llm.complete).not.toHaveBeenCalled()
+    expect(t.helper.paste).not.toHaveBeenCalled()
+    expect(t.helper.copySelection).not.toHaveBeenCalled()
+    expect(t.history[0]).toMatchObject({ mode: 'command', status: 'empty', wordCount: 0, usedLlm: false })
+    expect(lastNotice(t)?.notice?.text).toBe("Didn't catch a command. Try again.")
+  })
+
+  it('starts reading the window text as soon as the session starts', () => {
+    const t = setup({ llmAvailable: true })
     t.controller.handleShortcut('command', 'down')
-    expect(t.capture.start).not.toHaveBeenCalled()
-    expect(t.pills.at(-1)).toMatchObject({ phase: 'notice', notice: { kind: 'error' } })
+    expect(t.helper.getWindowText).toHaveBeenCalledWith(6000)
+    expect(t.asr.transcribe).not.toHaveBeenCalled()
+  })
+})
+
+describe('command actions', () => {
+  it('searches the web with the configured engine', async () => {
+    const t = setup({ transcript: 'search for standing desks', settings: { searchUrl: 'https://duckduckgo.com/?q={query}' } })
+    await command(t)
+    expect(t.openUrl).toHaveBeenCalledWith('https://duckduckgo.com/?q=standing%20desks')
+    expect(t.history[0]).toMatchObject({ status: 'action', finalText: 'https://duckduckgo.com/?q=standing%20desks' })
+  })
+
+  it('opens a spoken domain', async () => {
+    const t = setup({ transcript: 'go to github dot com' })
+    await command(t)
+    expect(t.openUrl).toHaveBeenCalledWith('https://github.com')
+  })
+
+  it('opens a saved site before an app with the same name', async () => {
+    const t = setup({ transcript: 'open spotify' })
+    t.db.saveSite({ name: 'Spotify', url: 'https://open.spotify.com' })
+    await command(t)
+    expect(t.openUrl).toHaveBeenCalledWith('https://open.spotify.com')
+    expect(t.helper.launchApp).not.toHaveBeenCalled()
+  })
+
+  it('searches when nothing matches and says so', async () => {
+    const t = setup({ transcript: 'open photoshop' })
+    await command(t)
+    expect(t.openUrl).toHaveBeenCalledWith('https://www.google.com/search?q=photoshop')
+    expect(t.pills.some((pill) => /No app called "photoshop"/.test(pill.notice?.text ?? ''))).toBe(true)
+  })
+
+  it('searches the web while the app list has never loaded', async () => {
+    const t = setup({ transcript: 'open spotify' })
+    t.helper.listApps.mockResolvedValue(null)
+    await command(t)
+    expect(t.helper.launchApp).not.toHaveBeenCalled()
+    expect(t.openUrl).toHaveBeenCalledWith('https://www.google.com/search?q=spotify')
+  })
+
+  it('reports an app that fails to launch', async () => {
+    const t = setup({ transcript: 'open spotify', launchOk: false })
+    await command(t)
+    expect(t.history[0]).toMatchObject({ status: 'failed', error: 'launch_failed' })
+    expect(lastNotice(t)).toMatchObject({ phase: 'notice', notice: { kind: 'error' } })
+  })
+
+  it('puts the link on the clipboard when the browser will not open', async () => {
+    const t = setup({ transcript: 'go to example.com', openFails: true })
+    await command(t)
+    expect(t.capture.copyToClipboard).toHaveBeenCalledWith('https://example.com')
+    expect(t.history[0]).toMatchObject({ status: 'failed', error: 'open_failed' })
+  })
+
+  it('launches nothing when cancelled mid-way', async () => {
+    const t = setup({ transcript: 'open spotify' })
+    let release: (apps: Array<{ name: string; id: string }>) => void = () => undefined
+    t.helper.listApps.mockImplementation(() => new Promise((resolve) => (release = resolve)))
+    t.controller.handleShortcut('command', 'down')
+    t.record()
+    vi.advanceTimersByTime(900)
+    t.controller.handleShortcut('command', 'up')
+    t.controller.captureStopped(t.sessionId())
+    await vi.advanceTimersByTimeAsync(10)
+    expect(t.helper.listApps).toHaveBeenCalledOnce()
+    t.controller.handleShortcut('cancel', 'down')
+    release([{ name: 'Spotify', id: 'SpotifyAB.SpotifyMusic!Spotify' }])
+    await vi.runAllTimersAsync()
+    expect(t.helper.launchApp).not.toHaveBeenCalled()
+    expect(t.openUrl).not.toHaveBeenCalled()
+    expect(t.history).toHaveLength(0)
+  })
+
+  it('keeps targets out of the log', async () => {
+    const t = setup({ transcript: 'open spotify' })
+    await command(t)
+    await vi.advanceTimersByTimeAsync(5000)
+    t.asr.transcribe.mockResolvedValue('search for standing desks')
+    await command(t)
+    expect(t.helper.launchApp).toHaveBeenCalledOnce()
+    expect(t.openUrl).toHaveBeenCalledOnce()
+    expect(logged.filter((line) => line.startsWith('Command done'))).toHaveLength(2)
+    expect(logged.filter((line) => /spotify|standing desks/i.test(line))).toEqual([])
+  })
+})
+
+describe('command writing', () => {
+  it('runs a saved command on the selection and counts its use', async () => {
+    const t = setup({ llmAvailable: true, transcript: 'Spanish', selected: 'Good morning' })
+    await command(t)
+    const request = t.llm.complete.mock.calls[0]![0] as { user: string }
+    expect(request.user).toContain('<selected_text>\nGood morning\n</selected_text>')
+    expect(request.user).toContain('Translate this into Spanish')
+    expect(t.db.listCommands().find((entry) => entry.name === 'Spanish')?.uses).toBe(1)
+    expect(t.helper.paste).toHaveBeenCalledWith('Rewritten text.', expect.anything())
+  })
+
+  it('passes extra spoken words to a saved command', async () => {
+    const t = setup({ llmAvailable: true, transcript: 'Shorten, keep the deadline', selected: 'Long text' })
+    await command(t)
+    expect((t.llm.complete.mock.calls[0]![0] as { user: string }).user).toContain('Also: keep the deadline')
+  })
+
+  it('uses window text when nothing is selected with the local model', async () => {
+    const t = setup({ llmAvailable: true, transcript: 'reply to this', windowText: 'Can we meet Friday?' })
+    await command(t)
+    expect(t.helper.getWindowText).toHaveBeenCalledWith(6000)
+    expect((t.llm.complete.mock.calls[0]![0] as { user: string }).user).toContain('<screen_text>\nCan we meet Friday?\n</screen_text>')
+  })
+
+  it('never reads window text for a remote model, and says so once', async () => {
+    const t = setup({ llmAvailable: true, transcript: 'reply to this', windowText: 'secret', settings: { llmProvider: 'remote' } })
+    await command(t)
+    expect(t.helper.getWindowText).not.toHaveBeenCalled()
+    expect((t.llm.complete.mock.calls[0]![0] as { user: string }).user).not.toContain('screen_text')
+    expect(t.pills.some((pill) => /only shared with the built-in model/.test(pill.notice?.text ?? ''))).toBe(true)
+    await vi.advanceTimersByTimeAsync(5000)
+    await command(t)
+    expect(t.pills.filter((pill) => /only shared with the built-in model/.test(pill.notice?.text ?? ''))).toHaveLength(1)
   })
 })
 

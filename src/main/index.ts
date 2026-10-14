@@ -89,7 +89,14 @@ async function main(): Promise<void> {
       sound: (name) => settings.get().sounds && toPill('pill:sound', name),
       copyToClipboard: (text) => clipboard.writeText(text),
     },
+    openUrl: async (url) => {
+      // Only web pages: a spoken or saved target must never launch a file or another protocol handler.
+      const { protocol } = new URL(url)
+      if (protocol !== 'https:' && protocol !== 'http:') throw new Error('Only web addresses can be opened.')
+      await shell.openExternal(url)
+    },
   })
+  helper.on('status', (state) => state === 'ready' && controller.warmApps())
 
   // Engine status
 
