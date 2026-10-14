@@ -1,12 +1,23 @@
 // Starts the native helper and exercises the read-only requests: node scripts/helper-smoke.cjs
+// Screen text in replies is printed as its length only.
 const { spawn } = require('node:child_process')
 const path = require('node:path')
 const readline = require('node:readline')
 
+const SCREEN = new Set(['before', 'after', 'selected', 'contents', 'title', 'text'])
+const redact = (key, value) => (SCREEN.has(key) && typeof value === 'string' ? `<${value.length} chars>` : value)
+const show = (line) => {
+  try {
+    return JSON.stringify(JSON.parse(line), redact)
+  } catch {
+    return `<unparsed, ${line.length} chars>`
+  }
+}
+
 const exe = path.join(__dirname, '..', 'resources', 'helper', 'murmur-helper.exe')
 const child = spawn(exe, [], { stdio: ['pipe', 'pipe', 'inherit'] })
 const lines = readline.createInterface({ input: child.stdout })
-lines.on('line', (line) => console.log('<-', line.length > 600 ? `${line.slice(0, 600)}…` : line))
+lines.on('line', (line) => console.log('<-', show(line)))
 
 const send = (message) => child.stdin.write(`${JSON.stringify(message)}\n`)
 send({ id: 1, type: 'hello' })

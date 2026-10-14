@@ -27,35 +27,33 @@ internal static class WindowText
     /// <summary>Share of the budget given to text before the caret.</summary>
     private const double BeforeCaretShare = 0.8;
 
+    private static readonly UiaWorker Reader = new("uia-window", BudgetMs);
+
     public static JsonObject Read(int maxChars)
     {
         var watch = Stopwatch.StartNew();
-        JsonObject? result = null;
-        var done = new ManualResetEventSlim();
-        var thread = new Thread(() =>
-        {
-            try { result = ReadCore(maxChars); }
-            catch (Exception e) { result = new JsonObject { ["ok"] = false, ["error"] = e.GetType().Name }; }
-            finally { done.Set(); }
-        })
-        { IsBackground = true, Name = "uia-window" };
-        thread.SetApartmentState(ApartmentState.MTA);
-        thread.Start();
         // An abandoned read may still finish later; it never touches the reply sent here.
-        var reply = done.Wait(BudgetMs) && result is not null ? result : new JsonObject { ["ok"] = false, ["error"] = "timeout" };
+        var reply = Reader.Run(
+            automation => ReadCore(automation, maxChars),
+            e => new JsonObject { ["ok"] = false, ["error"] = e.GetType().Name },
+            out var result) switch
+        {
+            UiaWorker.Outcome.Done when result is not null => result,
+            UiaWorker.Outcome.Busy => new JsonObject { ["ok"] = false, ["error"] = "busy" },
+            _ => new JsonObject { ["ok"] = false, ["error"] = "timeout" },
+        };
         reply["elapsedMs"] = watch.ElapsedMilliseconds;
         return reply;
     }
 
-    private static JsonObject ReadCore(int maxChars)
+    private static JsonObject ReadCore(CUIAutomation8 automation, int maxChars)
     {
         var window = GetForegroundWindow();
         if (window == IntPtr.Zero) return new JsonObject { ["ok"] = false, ["error"] = "no_window" };
         // An elevated window's UI Automation tree is out of reach of this process.
-        if (ForegroundApp.IsTargetElevated()) return new JsonObject { ["ok"] = false, ["error"] = "elevated" };
+        if (ForegroundApp.IsElevatedWindow(window)) return new JsonObject { ["ok"] = false, ["error"] = "elevated" };
         GetWindowThreadProcessId(window, out var pid);
 
-        var automation = new CUIAutomation8();
         var root = automation.ElementFromHandle(window);
         if (root is null) return new JsonObject { ["ok"] = false, ["error"] = "no_window" };
 
@@ -100,12 +98,14 @@ internal static class WindowText
     {
         var selection = pattern.GetSelection();
         if (selection is null || selection.Length == 0) return pattern.DocumentRange.GetText(maxChars) ?? "";
-        var caret = selection.GetElement(0);
-        var before = (int)(maxChars * BeforeCaretShare);
+        // The caret is the end of the selection; collapse to it so a long selection cannot eat the window.
+        var range = selection.GetElement(0).Clone();
+        range.MoveEndpointByRange(TextPatternRangeEndpoint.TextPatternRangeEndpoint_Start, range, TextPatternRangeEndpoint.TextPatternRangeEndpoint_End);
 
-        var range = caret.Clone();
-        range.MoveEndpointByUnit(TextPatternRangeEndpoint.TextPatternRangeEndpoint_Start, TextUnit.TextUnit_Character, -before);
-        range.MoveEndpointByUnit(TextPatternRangeEndpoint.TextPatternRangeEndpoint_End, TextUnit.TextUnit_Character, maxChars - before);
+        // Text after the caret first, then whatever share it did not use goes to the text before it.
+        var afterShare = maxChars - (int)(maxChars * BeforeCaretShare);
+        var after = Math.Max(0, range.MoveEndpointByUnit(TextPatternRangeEndpoint.TextPatternRangeEndpoint_End, TextUnit.TextUnit_Character, afterShare));
+        range.MoveEndpointByUnit(TextPatternRangeEndpoint.TextPatternRangeEndpoint_Start, TextUnit.TextUnit_Character, -(maxChars - after));
         return range.GetText(maxChars) ?? "";
     }
 

@@ -63,9 +63,11 @@ internal static class ForegroundApp
     }
 
     /// <summary>Input injected by a normal process is discarded by windows running elevated.</summary>
-    public static bool IsTargetElevated()
+    public static bool IsTargetElevated() => IsElevatedWindow(GetForegroundWindow());
+
+    /// <summary>True when the window's process runs elevated and this one does not.</summary>
+    public static bool IsElevatedWindow(IntPtr window)
     {
-        var window = GetForegroundWindow();
         if (window == IntPtr.Zero) return false;
         GetWindowThreadProcessId(window, out var pid);
         return IsElevated(pid) == true && IsElevated((uint)Environment.ProcessId) != true;
@@ -91,26 +93,21 @@ internal static class ForegroundApp
     /// Text around the caret in the focused control. UI Automation providers can hang, so the read runs
     /// on its own thread and is abandoned at the timeout.
     /// </summary>
-    public static JsonObject ReadFocusedText(int maxChars)
-    {
-        JsonObject result = new() { ["available"] = false };
-        var done = new ManualResetEventSlim();
-        var thread = new Thread(() =>
+    public static JsonObject ReadFocusedText(int maxChars) =>
+        Reader.Run(
+            automation => ReadFocusedTextCore(automation, maxChars),
+            e => new JsonObject { ["available"] = false, ["reason"] = e.GetType().Name },
+            out var result) switch
         {
-            try { result = ReadFocusedTextCore(maxChars); }
-            catch (Exception e) { result = new JsonObject { ["available"] = false, ["reason"] = e.GetType().Name }; }
-            finally { done.Set(); }
-        })
-        { IsBackground = true, Name = "uia-read" };
-        thread.SetApartmentState(ApartmentState.MTA);
-        thread.Start();
-        if (!done.Wait(ReadTimeoutMs)) return new JsonObject { ["available"] = false, ["reason"] = "timeout" };
-        return result;
-    }
+            UiaWorker.Outcome.Done when result is not null => result,
+            UiaWorker.Outcome.Busy => new JsonObject { ["available"] = false, ["reason"] = "busy" },
+            _ => new JsonObject { ["available"] = false, ["reason"] = "timeout" },
+        };
 
-    private static JsonObject ReadFocusedTextCore(int maxChars)
+    private static readonly UiaWorker Reader = new("uia-read", ReadTimeoutMs);
+
+    private static JsonObject ReadFocusedTextCore(CUIAutomation8 automation, int maxChars)
     {
-        var automation = new CUIAutomation8();
         var element = automation.GetFocusedElement();
         if (element is null) return new JsonObject { ["available"] = false, ["reason"] = "no_focus" };
 

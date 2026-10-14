@@ -1,8 +1,7 @@
 // Checks the helper's command-mode requests against the real OS: node scripts/helper-commands-test.cjs [helper.exe]
-// Launches Character Map and Notepad, and closes only the processes it started. Screen text is measured, never printed.
+// Launches Character Map and a window of its own, and closes only the processes it started. Never opens the
+// user's apps or documents. Screen text is measured, never printed.
 const { execFileSync, spawn } = require('node:child_process')
-const fs = require('node:fs')
-const os = require('node:os')
 const path = require('node:path')
 const readline = require('node:readline')
 
@@ -61,51 +60,55 @@ const check = (name, ok, detail) => {
 }
 const skip = (name, reason) => console.log(`SKIP  ${name}\n      ${reason}`)
 
-/** Saved tabs that Windows 11 Notepad reopens at start ("continue where you left off"). Counted, never read. */
-const notepadSavedTabs = () => {
-  const dir = path.join(process.env.LOCALAPPDATA ?? '', 'Packages', 'Microsoft.WindowsNotepad_8wekyb3d8bbwe', 'LocalState', 'TabState')
+const MARKER = 'Murmur window text check: the quick brown fox.'
+// A form of the test's own holding the marker in a RichEdit 5.0 control, which UI Automation exposes as a
+// Document with a TextPattern (the stock WinForms RichTextBox uses RichEdit 2.0, which it does not).
+const FIXTURE = [
+  'Add-Type -AssemblyName System.Windows.Forms',
+  "Add-Type -ReferencedAssemblies System.Windows.Forms -TypeDefinition @'",
+  'using System;',
+  'using System.Runtime.InteropServices;',
+  'using System.Windows.Forms;',
+  'public class MurmurRichEdit50 : RichTextBox {',
+  '  [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern IntPtr LoadLibraryW(string name);',
+  '  protected override CreateParams CreateParams {',
+  '    get { LoadLibraryW("msftedit.dll"); CreateParams p = base.CreateParams; p.ClassName = "RICHEDIT50W"; return p; }',
+  '  }',
+  '}',
+  "'@",
+  "$f = New-Object Windows.Forms.Form; $f.Text = 'Murmur window text check'; $f.Width = 520; $f.Height = 200; $f.TopMost = $true",
+  "$t = New-Object MurmurRichEdit50; $t.Dock = 'Fill'; $t.ReadOnly = $true; $t.Text = $env:MURMUR_MARKER",
+  '$f.Controls.Add($t); $f.Add_Shown({ $f.Activate(); $t.Focus() })',
+  '[Windows.Forms.Application]::Run($f)',
+].join('\n')
+
+/** Shows the test's own window, waits for it to be in front, and checks getWindowText finds the marker. */
+async function ownWindowCheck() {
+  const name = 'getWindowText reads a window with a text document'
+  const powershell = path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+  const encoded = Buffer.from(FIXTURE, 'utf16le').toString('base64')
+  const form = spawn(powershell, ['-NoProfile', '-NonInteractive', '-STA', '-EncodedCommand', encoded], {
+    stdio: 'ignore',
+    env: { ...process.env, MURMUR_MARKER: MARKER },
+  })
+  const exited = new Promise((resolve) => form.on('exit', resolve))
   try {
-    return fs.readdirSync(dir).filter((file) => file.endsWith('.bin')).length
-  } catch {
-    return 0
-  }
-}
-
-/**
- * Opens a temp file in a fresh Notepad and checks the window text contains its marker. Never types into it.
- * Skipped when Notepad is running (the file would open in the user's window) or has saved tabs (a fresh
- * Notepad would reopen the user's documents next to ours).
- */
-async function notepadCheck() {
-  const name = 'getWindowText reads Notepad'
-  const marker = 'Murmur window text check: the quick brown fox.'
-  const before = pids('Notepad.exe')
-  if (before.size > 0) return skip(name, 'Notepad is already running; it would open the file in the user\'s window')
-  if (notepadSavedTabs() > 0) return skip(name, 'Notepad has saved tabs; a fresh Notepad would reopen the user\'s documents')
-
-  const file = path.join(os.tmpdir(), `murmur-window-text-${process.pid}.txt`)
-  fs.writeFileSync(file, `${marker}\r\n`)
-  let mine = []
-  try {
-    spawn(path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'notepad.exe'), [file], { detached: true, stdio: 'ignore' }).unref()
-    mine = await newPids('Notepad.exe', before)
-    if (mine.length === 0) return skip(name, 'no new Notepad process appeared')
-
     let front = false
-    for (let attempt = 0; attempt < 20 && !front; attempt++) {
+    for (let attempt = 0; attempt < 32 && !front && form.exitCode === null; attempt++) {
       await sleep(250)
       const context = await request('getContext', { maxChars: 1 })
-      front = mine.includes(context.app?.pid)
+      front = context.app?.pid === form.pid
     }
-    if (!front) return skip(name, 'Notepad did not come to the foreground')
-    await sleep(300) // let the document finish loading
-
+    if (!front) {
+      return skip(name, 'the test window did not come to the foreground (Windows keeps focus with the app in use; run from a focused terminal)')
+    }
     const window = await request('getWindowText', { maxChars: 6000 }, 5000)
-    const found = (window.text ?? '').includes(marker)
-    check(name, window.ok && found, `marker found: ${found ? 'yes' : 'no'}; ${window.source}: ${window.text?.length ?? 0} chars in ${window.elapsedMs} ms`)
+    const found = (window.text ?? '').includes(MARKER)
+    if (!window.ok && window.error === 'elevated') return skip(name, 'the foreground window is elevated')
+    check(name, window.ok && found, `marker found: ${found ? 'yes' : 'no'}; ${window.source ?? window.error}: ${window.text?.length ?? 0} chars in ${window.elapsedMs} ms`)
   } finally {
-    await close('Notepad.exe', mine)
-    fs.rmSync(file, { force: true })
+    if (form.exitCode === null) form.kill() // our own PowerShell process, by its handle
+    await Promise.race([exited, sleep(3000)])
   }
 }
 
@@ -122,8 +125,13 @@ async function main() {
   const refused = await request('launchApp', { appId: 'C:\\Windows\\System32\\cmd.exe' })
   check('launchApp refuses ids that are not in the list', refused.ok === false && refused.error === 'unknown_app', JSON.stringify(refused))
   if (charmap) {
-    const injected = await request('launchApp', { appId: `${charmap.id}" /select,C:\\` })
-    check('launchApp refuses ids that could escape the argument', injected.ok === false && injected.error === 'invalid_id', JSON.stringify(injected))
+    const quoted = await request('launchApp', { appId: `${charmap.id}" /select` })
+    const comma = await request('launchApp', { appId: `${charmap.id},/root` })
+    check(
+      'launchApp refuses ids that could escape the argument',
+      [quoted, comma].every((reply) => reply.ok === false && reply.error === 'invalid_id'),
+      `${JSON.stringify(quoted)} ${JSON.stringify(comma)}`,
+    )
   }
 
   if (charmap) {
@@ -135,10 +143,14 @@ async function main() {
   }
 
   const window = await request('getWindowText', { maxChars: 6000 }, 5000)
-  check('getWindowText answers within its budget', window.ok && window.elapsedMs <= 1700, `${window.source ?? window.error}: ${window.text?.length ?? 0} chars in ${window.elapsedMs} ms`)
-  check('getWindowText respects maxChars', (window.text ?? '').length <= 6000)
+  if (!window.ok && window.error === 'elevated') {
+    skip('getWindowText answers within its budget', 'the foreground window is elevated')
+  } else {
+    check('getWindowText answers within its budget', window.ok && window.elapsedMs <= 1700, `${window.source ?? window.error}: ${window.text?.length ?? 0} chars in ${window.elapsedMs} ms`)
+    check('getWindowText respects maxChars', (window.text ?? '').length <= 6000)
+  }
 
-  await notepadCheck()
+  await ownWindowCheck()
 
   child.stdin.write('{"type":"quit"}\n')
   process.exitCode = results.every(Boolean) ? 0 : 1
