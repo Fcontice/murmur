@@ -257,9 +257,13 @@ export class DictationController extends EventEmitter<{ pill: [PillState]; histo
     capture.start(session.id)
   }
 
-  /** Screen text never leaves the machine: only the built-in model gets it, so nothing else reads it. */
+  /**
+   * Screen text never leaves the machine: only the built-in model gets it, so nothing else reads it. App awareness
+   * off means no window reading at all; the app and selection are still read, since commands act on them.
+   */
   private readScreen(): Promise<WindowText | null> {
-    if (this.deps.settings().llmProvider !== 'local' || !this.deps.llm.available) return Promise.resolve(null)
+    const settings = this.deps.settings()
+    if (!settings.useAppContext || settings.llmProvider !== 'local' || !this.deps.llm.available) return Promise.resolve(null)
     return this.deps.helper.getWindowText(SCREEN_CHARS).catch(() => null)
   }
 

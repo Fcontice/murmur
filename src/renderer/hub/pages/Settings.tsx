@@ -194,7 +194,7 @@ export function SettingsPage({ settings, update, status, models }: Props) {
         <Row title="Voice commands" description="“New line”, “new paragraph”, and “press enter” at the end to send.">
           <Toggle label="Voice commands" checked={settings.voiceCommands} onChange={(value) => void update({ voiceCommands: value })} />
         </Row>
-        <Row title="App awareness" description="Reads which app is focused and the text around the cursor to pick the style and spacing. Never stored.">
+        <Row title="App awareness" description="Reads which app is focused and the text around the cursor to pick the style and spacing, and the window's text for commands. Never stored.">
           <Toggle label="App awareness" checked={settings.useAppContext} onChange={(value) => void update({ useAppContext: value })} />
         </Row>
         <Row title="Sounds" description="Short cues when recording starts and stops.">

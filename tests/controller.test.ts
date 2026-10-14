@@ -310,10 +310,33 @@ describe('command mode', () => {
     expect((t.llm.complete.mock.calls[0]![0] as { user: string }).user).not.toContain('screen_text')
   })
 
-  it('reads the context and the window text once when dictation is upgraded to a command', async () => {
+  it('does not read window text when app awareness is off', async () => {
+    const t = setup({ llmAvailable: true, transcript: 'reply to this', windowText: 'Can we meet Friday?', settings: { useAppContext: false } })
+    await command(t)
+    expect(t.helper.getWindowText).not.toHaveBeenCalled()
+    expect(t.helper.getContext).toHaveBeenCalledOnce()
+    expect((t.llm.complete.mock.calls[0]![0] as { user: string }).user).not.toContain('screen_text')
+  })
+
+  it('reads the context but no window text when dictation without app awareness is upgraded to a command', async () => {
     const t = setup({ llmAvailable: true, transcript: 'reply to this', windowText: 'Can we meet Friday?', settings: { useAppContext: false } })
     t.controller.handleShortcut('ptt', 'down')
     expect(t.helper.getContext).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(80)
+    t.controller.handleShortcut('command', 'down')
+    t.record()
+    vi.advanceTimersByTime(900)
+    t.controller.handleShortcut('command', 'up')
+    t.controller.handleShortcut('ptt', 'up')
+    await t.settle()
+    expect(t.helper.getContext).toHaveBeenCalledOnce()
+    expect(t.helper.getWindowText).not.toHaveBeenCalled()
+    expect((t.llm.complete.mock.calls[0]![0] as { user: string }).user).not.toContain('screen_text')
+  })
+
+  it('reads the context and the window text once when dictation is upgraded to a command', async () => {
+    const t = setup({ llmAvailable: true, transcript: 'reply to this', windowText: 'Can we meet Friday?' })
+    t.controller.handleShortcut('ptt', 'down')
     vi.advanceTimersByTime(80)
     t.controller.handleShortcut('command', 'down')
     t.record()
