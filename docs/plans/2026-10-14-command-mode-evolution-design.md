@@ -83,7 +83,7 @@ URLs open through `shell.openExternal`, restricted to `http` and `https`. Apps l
 - App matching was tuned on a probe of 210 real installed apps: whole-word matches beat prefix matches; documentation, help, installer and uninstaller entries are skipped unless asked for by name; "cmd" and "to do" are aliases for Command Prompt and Microsoft To Do.
 - Site names are keyed the same way as the resolver matches them, so a saved name always matches what is spoken.
 - Screen text is read only when a model can use it and nothing is selected, not on every command.
-- The screen budget is counted in estimated tokens (about 5,000) rather than characters, and a selection over about 3,000 tokens is refused with a notice.
+- The screen budget is counted in estimated tokens (about 5,000) rather than characters, and with the built-in model a selection over about 3,000 tokens is refused with a notice. Remote models keep a 12,000-character limit.
 - Prompt tags and forged labels ("The user's instruction:") in screen text and selections are neutralised before the prompt is built and restored in the output.
 - The end-to-end self-test runs only in a dev build and refuses to start without `MURMUR_USER_DATA`.
 - Known limit: Gemma 3 4B still obeys a short command at the end of the screen text. The eval keeps it as an expected failure; the impact is wrong typed text, not an action.

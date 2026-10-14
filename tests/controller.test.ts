@@ -534,6 +534,24 @@ describe('command writing', () => {
     expect(edit.helper.paste).toHaveBeenCalledWith('…and so on.', expect.anything())
   })
 
+  it('refuses a selection too long for the built-in model', async () => {
+    const t = setup({ llmAvailable: true, transcript: 'make this shorter', selected: 'a'.repeat(10_004) })
+    await command(t)
+    expect(t.llm.complete).not.toHaveBeenCalled()
+    expect(lastNotice(t)?.notice?.text).toBe('The selection is too long for command mode. Select a shorter passage.')
+  })
+
+  it('gives a remote model up to 12,000 selected characters', async () => {
+    const fits = setup({ llmAvailable: true, transcript: 'make this shorter', selected: 'a'.repeat(12_000), settings: { llmProvider: 'remote' } })
+    await command(fits)
+    expect(fits.llm.complete).toHaveBeenCalledOnce()
+
+    const tooLong = setup({ llmAvailable: true, transcript: 'make this shorter', selected: 'a'.repeat(12_001), settings: { llmProvider: 'remote' } })
+    await command(tooLong)
+    expect(tooLong.llm.complete).not.toHaveBeenCalled()
+    expect(lastNotice(tooLong)?.notice?.text).toBe('The selection is too long for command mode. Select a shorter passage.')
+  })
+
   it('never reads window text for a remote model, and says so once', async () => {
     const t = setup({ llmAvailable: true, transcript: 'reply to this', windowText: 'secret', settings: { llmProvider: 'remote' } })
     await command(t)

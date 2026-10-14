@@ -34,6 +34,8 @@ const CONTEXT_CHARS = 600
  * anything denser. The helper allows up to 20,000.
  */
 const SCREEN_CHARS = 16_000
+/** The built-in model's limit is its context window (`selectionFitsModel`); remote models have far more room. */
+const MAX_REMOTE_SELECTION_CHARS = 12_000
 const REMOTE_SCREEN_NOTICE = 'Screen text is only shared with the built-in model, so this command ran without it.'
 
 function assertNever(value: never): never {
@@ -438,7 +440,8 @@ export class DictationController extends EventEmitter<{ pill: [PillState]; histo
           const llmStarted = this.now()
           const selection = textContext.selected || (await helper.copySelection(this.requireForeground ?? undefined))
           if (session.cancelled) return
-          if (!selectionFitsModel(selection)) throw new Error('The selection is too long for command mode. Select a shorter passage.')
+          const fits = settings.llmProvider === 'local' ? selectionFitsModel(selection) : selection.length <= MAX_REMOTE_SELECTION_CHARS
+          if (!fits) throw new Error('The selection is too long for command mode. Select a shorter passage.')
           let screenText = ''
           if (!selection.trim()) {
             if (settings.llmProvider === 'local') {
