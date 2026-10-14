@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_SHORTCUTS, sameKeys, shortcutLabel, validateShortcut, VK } from '@shared/settings'
+import { DEFAULT_SHORTCUTS, SEARCH_ENGINES, sameKeys, shortcutLabel, validateSearchUrl, validateShortcut, VK } from '@shared/settings'
 import type { HistoryEntry } from '@shared/types'
 import { encodeWav, levelFromDb, pcm16ToFloat32, peak, rmsDb, splitAtPauses } from '../src/main/asr/audio'
 import { Database } from '../src/main/db'
@@ -173,5 +173,14 @@ describe('long and structured dictation', () => {
     expect(chunks.every((chunk) => chunk.endsWith('.'))).toBe(true)
     expect(chunks.join(' ')).toBe(sentence.repeat(100).trim())
     expect(splitForModel('short one')).toEqual(['short one'])
+  })
+})
+
+describe('search url', () => {
+  it('accepts the presets and rejects unusable templates', () => {
+    for (const engine of SEARCH_ENGINES) expect(validateSearchUrl(engine.url)).toBeNull()
+    expect(validateSearchUrl('https://example.com/search')).toMatch(/\{query\}/)
+    expect(validateSearchUrl('javascript:alert({query})')).toMatch(/https/)
+    expect(validateSearchUrl('not a url {query}')).toMatch(/valid/)
   })
 })

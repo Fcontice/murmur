@@ -42,6 +42,7 @@ export const DEFAULT_SETTINGS: Settings = {
   smartSpacing: true,
   voiceCommands: true,
   useAppContext: true,
+  searchUrl: 'https://www.google.com/search?q={query}',
 
   pasteMethod: 'clipboard',
   restoreClipboard: true,
@@ -118,4 +119,22 @@ export function validateShortcut(action: ShortcutAction, keys: number[]): string
 
 export function sameKeys(a: number[], b: number[]): boolean {
   return a.length === b.length && sortKeys(a).every((key, index) => key === sortKeys(b)[index])
+}
+
+export const SEARCH_ENGINES: Array<{ name: string; url: string }> = [
+  { name: 'Google', url: 'https://www.google.com/search?q={query}' },
+  { name: 'DuckDuckGo', url: 'https://duckduckgo.com/?q={query}' },
+  { name: 'Bing', url: 'https://www.bing.com/search?q={query}' },
+]
+
+/** Returns a reason the search URL cannot be used, or null when it is fine. */
+export function validateSearchUrl(url: string): string | null {
+  if (!url.includes('{query}')) return 'The search URL must contain {query} where the search terms go.'
+  try {
+    const parsed = new URL(url.replace('{query}', 'test'))
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return 'The search URL must start with https:// or http://.'
+  } catch {
+    return 'That is not a valid web address.'
+  }
+  return null
 }

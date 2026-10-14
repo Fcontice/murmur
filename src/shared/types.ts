@@ -32,6 +32,8 @@ export interface Settings {
   smartSpacing: boolean
   voiceCommands: boolean
   useAppContext: boolean
+  /** Web search URL with {query} where the encoded search terms go. */
+  searchUrl: string
 
   pasteMethod: 'clipboard' | 'type'
   restoreClipboard: boolean
@@ -68,7 +70,7 @@ export interface TextContext {
   isPassword: boolean
 }
 
-export type HistoryStatus = 'pasted' | 'copied' | 'failed' | 'empty'
+export type HistoryStatus = 'pasted' | 'copied' | 'failed' | 'empty' | 'action'
 
 export interface HistoryEntry {
   id: string
@@ -103,6 +105,27 @@ export interface Snippet {
   expansion: string
   createdAt: number
   uses: number
+}
+
+export interface SavedCommand {
+  id: string
+  name: string
+  prompt: string
+  createdAt: number
+  uses: number
+}
+
+export interface Site {
+  id: string
+  name: string
+  url: string
+  createdAt: number
+}
+
+/** An entry in the Windows Apps folder. `id` is its parsing name under shell:AppsFolder. */
+export interface InstalledApp {
+  name: string
+  id: string
 }
 
 export interface Stats {
