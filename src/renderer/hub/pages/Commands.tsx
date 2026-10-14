@@ -72,7 +72,7 @@ function SavedCommands({ commands, refresh }: { commands: SavedCommand[]; refres
       <form className="card form" onSubmit={(event) => void submit(event)}>
         <label>
           Name
-          <input ref={nameInput} className="input" value={name} maxLength={MAX_COMMAND_NAME} placeholder="Spanish"onChange={(event) => setName(event.target.value)} />
+          <input ref={nameInput} className="input" value={name} maxLength={MAX_COMMAND_NAME} placeholder="Spanish" onChange={(event) => setName(event.target.value)} />
         </label>
         <label>
           Instruction <span className="optional">{prompt.length}/{MAX_PROMPT}</span>
@@ -179,11 +179,11 @@ function Sites() {
       <form className="card form" onSubmit={(event) => void submit(event)}>
         <label>
           Name
-          <input ref={nameInput} className="input" value={name} maxLength={MAX_SITE_NAME} placeholder="Gmail"onChange={(event) => setName(event.target.value)} />
+          <input ref={nameInput} className="input" value={name} maxLength={MAX_SITE_NAME} placeholder="Gmail" onChange={(event) => setName(event.target.value)} />
         </label>
         <label>
           Address
-          <input className="input" value={url} maxLength={MAX_URL} placeholder="mail.google.com"onChange={(event) => setUrl(event.target.value)} />
+          <input className="input" value={url} maxLength={MAX_URL} placeholder="mail.google.com" onChange={(event) => setUrl(event.target.value)} />
         </label>
         {error && <div className="form-error">{error}</div>}
         <div className="form-actions">
