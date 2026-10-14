@@ -110,12 +110,14 @@ export async function runSelfTest(context: SelfTestContext): Promise<void> {
   // One sink for the whole run, never removed: a command still finishing after its step can never open the browser.
   let urlSink: string[] = []
   controller.urlOverride = (url) => urlSink.push(url)
-  // Where the last screen read came from, for failure messages. The text itself is not kept.
-  let lastScreen: { source: string; chars: number } | null = null
+  // Where the last screen read came from and where the test's own marker word sat in it. Other text is not kept.
+  const SCREEN_MARKER = 'Lisbon'
+  let lastScreen: { source: string; chars: number; hasMarker: boolean; markerAt: number } | null = null
   const getWindowText = helper.getWindowText.bind(helper)
   helper.getWindowText = async (maxChars) => {
     const result = await getWindowText(maxChars)
-    lastScreen = { source: result.source, chars: result.text.length }
+    const markerAt = result.text.indexOf(SCREEN_MARKER)
+    lastScreen = { source: result.source, chars: result.text.length, hasMarker: markerAt >= 0, markerAt }
     return result
   }
   const hub = context.showHub()
@@ -322,21 +324,49 @@ export async function runSelfTest(context: SelfTestContext): Promise<void> {
   await step('command: summarize what is on screen', async () => {
     if (!llm.available) throw new Error(`Language model not available: ${llm.detail}`)
     await showPage('Home')
-    // Right before the box, so it sits in the text read before the caret.
-    await js(`(() => {
-      const box = document.querySelector('.try')
-      let note = document.getElementById('selftest-article')
-      if (!note) { note = document.createElement('p'); note.id = 'selftest-article'; box.parentElement.insertBefore(note, box) }
-      note.textContent = 'Lisbon will host the 2027 climate summit. Organisers expect 40,000 visitors over five days and plan two temporary ferry lines.'
-      box.value = ''; box.focus()
-    })()`)
-    const stepStart = Date.now()
-    lastScreen = null
+    // Like reading an article: the page shows the article and the box, nothing else of the Home page. display:none
+    // also takes the hidden parts out of the accessibility tree, so the screen read sees only these two.
+    const ARTICLE = [
+      'Lisbon will host the 2027 United Nations climate summit, the city council confirmed on Tuesday.',
+      'Organisers expect around 40,000 delegates and visitors over the five days of talks.',
+      'To ease pressure on the bridges, the city plans two temporary ferry lines across the Tagus.',
+      'Hotels near the venue in Parque das Nações are already reporting bookings well above last year.',
+    ].join(' ')
+    const restorePage = `(() => {
+      document.getElementById('selftest-article')?.remove()
+      for (const [element, display] of window.__selftestHidden ?? []) element.style.display = display
+      window.__selftestHidden = []
+    })()`
     let text: string
+    let stepStart = 0
     try {
+      await js(`(() => {
+        const box = document.querySelector('.try')
+        const content = document.querySelector('.content')
+        const article = document.createElement('article')
+        article.id = 'selftest-article'
+        const heading = document.createElement('h2')
+        heading.textContent = 'Climate summit heads to Portugal'
+        const body = document.createElement('p')
+        body.textContent = ${JSON.stringify(ARTICLE)}
+        article.append(heading, body)
+        box.parentElement.insertBefore(article, box)
+        window.__selftestHidden = []
+        // Up from the box to .content, hide every sibling that is neither the article nor on the path to the box.
+        for (let node = box; node && node !== content; node = node.parentElement) {
+          for (const sibling of node.parentElement.children) {
+            if (sibling === node || sibling === article || sibling.style.display === 'none') continue
+            window.__selftestHidden.push([sibling, sibling.style.display])
+            sibling.style.display = 'none'
+          }
+        }
+        box.value = ''; box.focus()
+      })()`)
+      stepStart = Date.now()
+      lastScreen = null
       text = await dictate('summarize', 'command')
     } finally {
-      await js(`document.getElementById('selftest-article')?.remove()`)
+      await js(restorePage)
     }
     if (!/lisbon/i.test(text)) {
       throw new Error(
