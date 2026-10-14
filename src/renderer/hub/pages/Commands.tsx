@@ -37,12 +37,16 @@ function Examples({ command }: { command?: SavedCommand }) {
   )
 }
 
-function SavedCommands({ commands, refresh }: { commands: SavedCommand[]; refresh: () => void }) {
+function SavedCommands({ commands, loadError, refresh }: { commands: SavedCommand[]; loadError: string | null; refresh: () => void }) {
   const nameInput = useRef<HTMLInputElement>(null)
   const [editing, setEditing] = useState<string | null>(null)
   const [name, setName] = useState('')
   const [prompt, setPrompt] = useState('')
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (loadError) setError(loadError)
+  }, [loadError])
 
   const reset = () => {
     setEditing(null)
@@ -148,7 +152,7 @@ function Sites() {
   const [url, setUrl] = useState('')
   const [error, setError] = useState<string | null>(null)
 
-  const refresh = () => void api.listSites().then(setSites)
+  const refresh = () => void api.listSites().then(setSites, (problem: unknown) => setError(errorMessage(problem)))
   useEffect(refresh, [])
 
   const reset = () => {
@@ -314,9 +318,17 @@ function WebSearch({ settings, update }: Props) {
 
 export function Commands({ settings, update }: Props) {
   const [commands, setCommands] = useState<SavedCommand[]>([])
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   // Loaded here, not in SavedCommands, because the examples card also names the first saved command.
-  const refresh = () => void api.listCommands().then(setCommands)
+  const refresh = () =>
+    void api.listCommands().then(
+      (list) => {
+        setCommands(list)
+        setLoadError(null)
+      },
+      (problem: unknown) => setLoadError(errorMessage(problem)),
+    )
   useEffect(refresh, [])
 
   return (
@@ -329,7 +341,7 @@ export function Commands({ settings, update }: Props) {
       </header>
 
       <Examples command={commands[0]} />
-      <SavedCommands commands={commands} refresh={refresh} />
+      <SavedCommands commands={commands} loadError={loadError} refresh={refresh} />
       <Sites />
       <WebSearch settings={settings} update={update} />
     </div>
