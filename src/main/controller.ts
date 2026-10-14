@@ -445,7 +445,13 @@ export class DictationController extends EventEmitter<{ pill: [PillState]; histo
             route.kind === 'saved' ? route.command.prompt + (route.extra ? `\n\nAlso: ${route.extra}` : '') : route.instruction
           const reply = await llm.complete(buildCommandRequest({ instruction: spoken, selection, screenText, appName: app.name })).catch((error: unknown) => {
             // Pasting a cut-off edit over the selection would lose the rest of the user's text.
-            if (error instanceof TruncatedError) throw new Error('The edit was cut short, so nothing was replaced. Select a shorter passage.')
+            if (error instanceof TruncatedError) {
+              throw new Error(
+                selection.trim()
+                  ? 'The edit was cut short, so nothing was replaced. Select a shorter passage.'
+                  : 'The reply was too long and got cut off, so nothing was inserted. Ask for something shorter.',
+              )
+            }
             throw error
           })
           text = restoreTags(tidyModelOutput(reply))

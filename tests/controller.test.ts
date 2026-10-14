@@ -488,6 +488,17 @@ describe('command writing', () => {
     expect(t.pills.some((pill) => pill.notice?.text === 'The edit was cut short, so nothing was replaced. Select a shorter passage.')).toBe(true)
   })
 
+  it('inserts nothing and says the reply was too long when a write was cut short', async () => {
+    const t = setup({ llmAvailable: true, transcript: 'reply to this', windowText: 'Can we meet Friday?' })
+    t.llm.complete.mockRejectedValueOnce(new TruncatedError('Hi, Friday wor'))
+    await command(t)
+    expect(t.helper.paste).not.toHaveBeenCalled()
+    expect(t.capture.copyToClipboard).not.toHaveBeenCalled()
+    const notices = t.pills.map((pill) => pill.notice?.text)
+    expect(notices).toContain('The reply was too long and got cut off, so nothing was inserted. Ask for something shorter.')
+    expect(notices.some((text) => /nothing was replaced/.test(text ?? ''))).toBe(false)
+  })
+
   it('drops a leading ellipsis from written text, but not from an edited selection', async () => {
     const write = setup({ llmAvailable: true, transcript: 'continue this paragraph', windowText: 'To make up for it, we started' })
     write.llm.complete.mockResolvedValueOnce('... using daily stand-ups.')
