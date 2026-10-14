@@ -7,6 +7,7 @@ import { applyDictionary, applySnippets } from '../src/main/text/dictionary'
 import { isPlausibleCleanup, runPipeline } from '../src/main/text/pipeline'
 import { fitToContext } from '../src/main/text/spacing'
 import { tidyModelOutput } from '../src/main/llm/prompts'
+import { TruncatedError } from '../src/main/llm/errors'
 
 const noContext: TextContext = { available: false, before: '', after: '', selected: '', isPassword: false }
 const context = (before: string, after = '', selected = ''): TextContext => ({ available: true, before, after, selected, isPassword: false })
@@ -163,6 +164,14 @@ describe('runPipeline', () => {
       complete: async () => 'Two plus two equals four. This is a basic arithmetic fact that follows from the definition of addition on the natural numbers.',
     })
     expect(out).toMatchObject({ text: 'What is two plus two ', usedLlm: false, llmRejected: true })
+  })
+
+  it('keeps every word when the clean-up was cut short', async () => {
+    const raw = 'so the plan is we ship on friday and then we review the numbers on monday'
+    const out = await runPipeline({ ...base, raw, complete: async () => { throw new TruncatedError('So the plan is we ship') } })
+    expect(out).toMatchObject({ usedLlm: false, llmRejected: true })
+    expect(out.text).toMatch(/review the numbers on monday/i)
+    expect(out.text).not.toBe('So the plan is we ship')
   })
 
   it('falls back when the model throws', async () => {

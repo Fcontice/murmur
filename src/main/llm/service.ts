@@ -8,6 +8,7 @@ import type { EngineStatus, Settings } from '@shared/types'
 import { logger } from '../log'
 import type { ModelManager } from '../models'
 import { resourcePath, userFile } from '../paths'
+import { TruncatedError } from './errors'
 import { buildFormatRequest, type ChatRequest } from './prompts'
 
 const log = logger('llm')
@@ -226,7 +227,10 @@ export class LlmService extends EventEmitter<{ status: [LlmState, string] }> {
     await Promise.race([
       this.request(server.endpoint, buildFormatRequest({
         transcript: 'testing one two three', style: 'formal', strength: 'light', category: 'other', appName: '', vocabulary: [],
-      }), 120_000),
+      }), 120_000).catch((error: unknown) => {
+        // A cut-off warm-up reply still warmed the model; only real failures count.
+        if (!(error instanceof TruncatedError)) throw error
+      }),
       exited,
     ])
   }
@@ -304,9 +308,14 @@ export class LlmService extends EventEmitter<{ status: [LlmState, string] }> {
       signal: AbortSignal.timeout(timeoutMs),
     })
     if (!response.ok) throw new Error(`The language model returned an error (${response.status})`)
-    const body = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> }
-    const content = body.choices?.[0]?.message?.content
+    const body = (await response.json()) as { choices?: Array<{ message?: { content?: string }; finish_reason?: string | null }> }
+    const choice = body.choices?.[0]
+    const content = choice?.message?.content
     if (typeof content !== 'string') throw new Error('The language model returned no text')
+    if (choice?.finish_reason === 'length') {
+      log.warn(`Reply cut off at max_tokens ${request.maxTokens} (${content.length} chars)`)
+      throw new TruncatedError(content)
+    }
     return content
   }
 
@@ -314,7 +323,13 @@ export class LlmService extends EventEmitter<{ status: [LlmState, string] }> {
   async test(): Promise<{ ok: boolean; message: string }> {
     const started = Date.now()
     try {
-      const reply = await this.complete({ system: 'Reply with the single word: ready', shots: [], user: 'Are you there?', maxTokens: 8 })
+      // A reply cut off by the tiny token limit still proves the model answers.
+      const reply = await this.complete({ system: 'Reply with the single word: ready', shots: [], user: 'Are you there?', maxTokens: 8 }).catch(
+        (error: unknown) => {
+          if (error instanceof TruncatedError) return error.partial
+          throw error
+        },
+      )
       return { ok: true, message: `Replied "${reply.trim().slice(0, 40)}" in ${Date.now() - started} ms.` }
     } catch (error) {
       return { ok: false, message: error instanceof Error ? error.message : String(error) }

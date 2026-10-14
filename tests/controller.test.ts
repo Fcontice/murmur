@@ -3,6 +3,7 @@ import { DEFAULT_SETTINGS } from '@shared/settings'
 import type { HistoryEntry, PillState, Settings } from '@shared/types'
 import { DictationController, TAP_WINDOW_MS, type ControllerDeps } from '../src/main/controller'
 import { Database } from '../src/main/db'
+import { TruncatedError } from '../src/main/llm/errors'
 
 const logged = vi.hoisted(() => [] as string[])
 vi.mock('../src/main/log', () => {
@@ -476,6 +477,27 @@ describe('command writing', () => {
     await command(t)
     expect(t.helper.getWindowText).toHaveBeenCalledWith(6000)
     expect((t.llm.complete.mock.calls[0]![0] as { user: string }).user).toContain('<screen_text>\nCan we meet Friday?\n</screen_text>')
+  })
+
+  it('pastes nothing over the selection when the edit was cut short', async () => {
+    const t = setup({ llmAvailable: true, transcript: 'make this shorter', selected: 'A very long passage.' })
+    t.llm.complete.mockRejectedValueOnce(new TruncatedError('A very lo'))
+    await command(t)
+    expect(t.helper.paste).not.toHaveBeenCalled()
+    expect(t.capture.copyToClipboard).not.toHaveBeenCalled()
+    expect(t.pills.some((pill) => pill.notice?.text === 'The edit was cut short, so nothing was replaced. Select a shorter passage.')).toBe(true)
+  })
+
+  it('drops a leading ellipsis from written text, but not from an edited selection', async () => {
+    const write = setup({ llmAvailable: true, transcript: 'continue this paragraph', windowText: 'To make up for it, we started' })
+    write.llm.complete.mockResolvedValueOnce('... using daily stand-ups.')
+    await command(write)
+    expect(write.helper.paste).toHaveBeenCalledWith('using daily stand-ups.', expect.anything())
+
+    const edit = setup({ llmAvailable: true, transcript: 'make this shorter', selected: '…and so on, and so forth.' })
+    edit.llm.complete.mockResolvedValueOnce('…and so on.')
+    await command(edit)
+    expect(edit.helper.paste).toHaveBeenCalledWith('…and so on.', expect.anything())
   })
 
   it('never reads window text for a remote model, and says so once', async () => {

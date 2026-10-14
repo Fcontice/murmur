@@ -9,7 +9,8 @@ import { buildSearchUrl, resolveOpenTarget, type OpenTarget } from './command/re
 import { routeCommand, type CommandRoute } from './command/router'
 import type { Database } from './db'
 import type { Helper, HelperContext } from './helper'
-import { buildCommandRequest, restoreTags, selectionFitsModel, tidyModelOutput } from './llm/prompts'
+import { TruncatedError } from './llm/errors'
+import { buildCommandRequest, restoreTags, selectionFitsModel, stripLeadingEllipsis, tidyModelOutput } from './llm/prompts'
 import type { LlmService } from './llm/service'
 import { logger } from './log'
 import { categorizeApp, isTerminal } from './text/apps'
@@ -442,7 +443,13 @@ export class DictationController extends EventEmitter<{ pill: [PillState]; histo
           }
           const spoken =
             route.kind === 'saved' ? route.command.prompt + (route.extra ? `\n\nAlso: ${route.extra}` : '') : route.instruction
-          text = restoreTags(tidyModelOutput(await llm.complete(buildCommandRequest({ instruction: spoken, selection, screenText, appName: app.name }))))
+          const reply = await llm.complete(buildCommandRequest({ instruction: spoken, selection, screenText, appName: app.name })).catch((error: unknown) => {
+            // Pasting a cut-off edit over the selection would lose the rest of the user's text.
+            if (error instanceof TruncatedError) throw new Error('The edit was cut short, so nothing was replaced. Select a shorter passage.')
+            throw error
+          })
+          text = restoreTags(tidyModelOutput(reply))
+          if (!selection.trim()) text = stripLeadingEllipsis(text)
           if (session.cancelled) return
           if (!text) throw new Error('The model returned nothing. Try rephrasing the instruction.')
           if (route.kind === 'saved') db.recordCommandUse(route.command.id)

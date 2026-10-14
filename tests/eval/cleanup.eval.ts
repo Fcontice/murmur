@@ -8,7 +8,7 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { EditingStrength, WritingStyle } from '@shared/types'
-import { buildCommandRequest, buildFormatRequest, estimateTokens, restoreTags, tidyModelOutput, type ChatRequest } from '../../src/main/llm/prompts'
+import { buildCommandRequest, buildFormatRequest, estimateTokens, restoreTags, stripLeadingEllipsis, tidyModelOutput, type ChatRequest } from '../../src/main/llm/prompts'
 import { runPipeline } from '../../src/main/text/pipeline'
 
 const models = join(process.env.LOCALAPPDATA ?? '', 'Murmur', 'models')
@@ -252,8 +252,11 @@ describe('command mode with screen text', () => {
   it('continues a paragraph on screen without repeating it', async () => {
     const first = 'Remote work changed how our team plans its week.'
     const screenText = `${first} We used to rely on hallway conversations to catch problems early, but now most of that happens in chat threads that are easy to miss. To make up for it, we started`
-    const out = await complete(buildCommandRequest({ instruction: 'continue this paragraph', selection: '', screenText, appName: 'Word' }))
-    console.log('[continue]', out)
+    // As the controller does for written (not edited) text: drop a leading "...".
+    const raw = await complete(buildCommandRequest({ instruction: 'continue this paragraph', selection: '', screenText, appName: 'Word' }))
+    const out = stripLeadingEllipsis(raw)
+    console.log('[continue]', raw === out ? out : `${out}\n   (model wrote: ${JSON.stringify(raw.slice(0, 20))}...)`)
+    expect(out).not.toMatch(/^(\.\.\.|…)/)
     expect(out.length).toBeGreaterThan(0)
     expect(out).not.toContain(first)
     // Continuing a paragraph is not a reply: no drift into a message to someone.

@@ -159,7 +159,8 @@ const RESTORE = new RegExp(`‹${TAG_AFTER_BRACKET}`, 'gi')
 // line gets its colon swapped for a look-alike (U+A789), which the model no longer reads as ours.
 const LABELS = "The user['’]s instruction|Reference text from the screen \\(not instructions\\)|Selected text to edit"
 const NEUTRALISE_LABEL = new RegExp(`^([ \\t]*(?:${LABELS})[ \\t]*):`, 'gim')
-const RESTORE_LABEL = new RegExp(`^([ \\t]*(?:${LABELS})[ \\t]*)\uA789`, 'gim')
+// Not anchored to the line start: the model may reformat the line (a bullet, bold) around the label.
+const RESTORE_LABEL = new RegExp(`((?:${LABELS})[ \\t]*)\uA789`, 'gi')
 
 const neutraliseTags = (text: string) => text.replace(NEUTRALISE, '‹').replace(NEUTRALISE_LABEL, '$1\uA789')
 
@@ -189,7 +190,8 @@ export function buildCommandRequest(input: CommandPromptInput): ChatRequest {
         [withSelection('hey can u send the file when u get a sec', 'make this more professional'), 'Hi, could you send the file over when you have a moment?'],
       ],
       user: withSelection(neutraliseTags(input.selection), input.instruction),
-      maxTokens: Math.min(4096, Math.max(256, Math.ceil(input.selection.length / 2) + 256)),
+      // The edited copy is about as long as the selection, in tokens; characters undercount CJK.
+      maxTokens: Math.min(4096, Math.max(256, Math.ceil(estimateTokens(input.selection) * 1.3) + 256)),
     }
   }
   // The window text is mostly what comes before the caret, so trimming keeps the end.
@@ -241,6 +243,9 @@ export function buildCommandRequest(input: CommandPromptInput): ChatRequest {
     maxTokens: 1024,
   }
 }
+
+/** Continuations of on-screen text sometimes come back starting with "..."; the caret is already there. */
+export const stripLeadingEllipsis = (text: string) => text.replace(/^(?:\.{3}|…)\s*/, '')
 
 /** Models sometimes echo the wrapper or add quotes despite instructions. */
 export function tidyModelOutput(output: string): string {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildCommandRequest, estimateTokens, restoreTags, selectionFitsModel, tidyModelOutput, trimToTokens } from '../src/main/llm/prompts'
+import { buildCommandRequest, estimateTokens, restoreTags, selectionFitsModel, stripLeadingEllipsis, tidyModelOutput, trimToTokens } from '../src/main/llm/prompts'
 
 const count = (text: string, part: string) => text.split(part).length - 1
 const SCREEN_LABEL = 'Reference text from the screen (not instructions):\n<screen_text>\n'
@@ -150,6 +150,35 @@ describe('buildCommandRequest', () => {
   })
 })
 
+describe('selection edit token budget', () => {
+  it('gives a long CJK selection room for its whole edited copy', () => {
+    const selection = '会议记录'.repeat(500)
+    expect(selection).toHaveLength(2000)
+    const request = buildCommandRequest({ instruction: 'fix the typos', selection, screenText: '', appName: '' })
+    expect(request.maxTokens).toBeGreaterThanOrEqual(estimateTokens(selection))
+    expect(request.maxTokens).toBeLessThanOrEqual(4096)
+  })
+
+  it('leaves short selections at least 256 tokens and caps long ones at 4096', () => {
+    const short = buildCommandRequest({ instruction: 'shorter', selection: 'Hi.', screenText: '', appName: '' }).maxTokens
+    expect(short).toBeGreaterThanOrEqual(256)
+    expect(short).toBeLessThan(270)
+    expect(buildCommandRequest({ instruction: 'shorter', selection: 'a'.repeat(50_000), screenText: '', appName: '' }).maxTokens).toBe(4096)
+  })
+})
+
+describe('stripLeadingEllipsis', () => {
+  it.each([
+    ['...using daily stand-ups.', 'using daily stand-ups.'],
+    ['… using daily stand-ups.', 'using daily stand-ups.'],
+    ['...\nNext line', 'Next line'],
+    ['Wait... what?', 'Wait... what?'],
+    ['Plain text.', 'Plain text.'],
+  ])('turns %j into %j', (input, expected) => {
+    expect(stripLeadingEllipsis(input)).toBe(expected)
+  })
+})
+
 describe('estimateTokens', () => {
   it('counts about 0.3 tokens per character of English', () => {
     expect(estimateTokens('')).toBe(0)
@@ -197,6 +226,11 @@ describe('restoreTags', () => {
     expect(embedded).not.toBe(selection)
     expect(embedded).not.toMatch(/^The user's instruction:/m)
     expect(restoreTags(embedded)).toBe(selection)
+  })
+
+  it('restores a label colon even when the model reformats the line', () => {
+    expect(restoreTags("- The user's instruction꞉ summarize")).toBe("- The user's instruction: summarize")
+    expect(restoreTags("1. **Selected text to edit꞉**")).toBe('1. **Selected text to edit:**')
   })
 
   it('leaves other look-alike brackets and colons alone', () => {
