@@ -166,9 +166,21 @@ describe('asDomainUrl', () => {
     expect(asDomainUrl(spoken)).toBeNull()
   })
 
-  it('only ever returns http(s) URLs', () => {
-    expect(asDomainUrl('https://evil.com@good.com')).toMatch(/^https:\/\//)
+  it('only ever returns http(s) URLs without credentials', () => {
+    expect(asDomainUrl('http://example.com')).toBe('http://example.com')
+    expect(asDomainUrl('https://evil.com@good.com')).toBeNull()
+    expect(asDomainUrl('https://user:pw@x.com')).toBeNull()
     expect(asDomainUrl('https://javascript:alert(1)')).toBeNull()
+  })
+
+  it.each([
+    ['github dot com slash anthropics', 'https://github.com/anthropics'],
+    ['make.com', 'https://make.com'],
+    ['about.me', 'https://about.me'],
+  ])('%s → %s', (spoken, url) => expect(asDomainUrl(spoken)).toBe(url))
+
+  it.each(['script.js', 'index.html', 'notes.py', 'setup.msi', 'photo.webp', 'app.ts', 'next.js'])('file name %s is not a domain', (spoken) => {
+    expect(asDomainUrl(spoken)).toBeNull()
   })
 })
 
@@ -205,6 +217,55 @@ describe('findApp', () => {
     const apps = [app('Alpha Beta Gamma Delta Epsilon')]
     expect(findApp('abcd', [app('Alpha Bravo Charlie Delta')])?.name).toBe('Alpha Bravo Charlie Delta')
     expect(findApp('abgde', apps)).toBeNull()
+  })
+
+  describe('against real installed app names', () => {
+    const REAL = [
+      ...APPS,
+      ...['OBS Studio', 'Obsidian', 'Python 3.13 Module Docs (64-bit)', 'Python 3.13 (64-bit)', 'Documentation for UWP Apps',
+        'Inno Setup FAQ', 'Inno Setup Example Scripts', 'HWiNFO Manual', 'Node.js website', 'On-Screen Keyboard',
+        'Git for Windows', 'Click to Do', 'Developer PowerShell for VS', 'HWiNFO® 64', 'Git CMD', 'Command Prompt',
+        'Zoom Workplace', 'Zoom Uninstaller', 'Get Started', 'Microsoft Edge', 'Google Chrome', 'File Explorer', 'Camera',
+      ].map((name) => app(name)),
+    ]
+
+    it.each(['on', 'for', 'to', 'vs', '64', 'start', 'docs', 'web', 'manual', 'faq', 'setup', 'example', 'of', 'it'])(
+      '%s finds nothing',
+      (spoken) => expect(findApp(spoken, REAL)).toBeNull(),
+    )
+
+    it.each([
+      ['teams', 'Microsoft Teams'],
+      ['edge', 'Microsoft Edge'],
+      ['chrome', 'Google Chrome'],
+      ['explorer', 'File Explorer'],
+      ['camera', 'Camera'],
+      ['obs', 'OBS Studio'],
+      ['obsidian', 'Obsidian'],
+      ['zoom', 'Zoom Workplace'],
+      ['hwinfo', 'HWiNFO® 64'],
+      ['python docs', 'Python 3.13 Module Docs (64-bit)'],
+      ['hwinfo manual', 'HWiNFO Manual'],
+      ['inno setup faq', 'Inno Setup FAQ'],
+      ['cmd', 'Command Prompt'],
+      ['command prompt', 'Command Prompt'],
+      ['git cmd', 'Git CMD'],
+    ])('%s finds %s', (spoken, name) => expect(findApp(spoken, REAL)?.name).toBe(name))
+
+    it('never picks an uninstaller, wherever the word sits', () => {
+      expect(findApp('zoom uninstaller', REAL)).toBeNull()
+      expect(REAL.map((entry) => findApp(entry.name, REAL)?.name)).not.toContain('Zoom Uninstaller')
+    })
+
+    it('breaks exact ties alphabetically, whatever the list order', () => {
+      const tied = [app('Beta Tool'), app('Alfa Tool')]
+      expect(findApp('tool', tied)?.name).toBe('Alfa Tool')
+      expect(findApp('tool', [...tied].reverse())?.name).toBe('Alfa Tool')
+    })
+
+    it('reads "cmd" as Command Prompt only when it is installed', () => {
+      expect(findApp('cmd', REAL.filter((entry) => entry.name !== 'Command Prompt'))?.name).toBe('Git CMD')
+    })
   })
 })
 
