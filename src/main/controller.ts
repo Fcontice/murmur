@@ -167,7 +167,9 @@ export class DictationController extends EventEmitter<{ pill: [PillState]; histo
         else if (active && session.mode === 'dictate' && !session.locked && this.now() - session.startedAt < OTHER_SHORTCUT_GRACE_MS) {
           // The command chord contains the dictation chord, so dictation starts first and is upgraded here.
           session.mode = 'command'
-          session.screen = this.readScreen()
+          // Dictation skips the context when app context is off; command mode always needs the app and selection.
+          if (!this.deps.settings().useAppContext) session.context = this.deps.helper.getContext(CONTEXT_CHARS)
+          session.screen = this.screenAfter(session.context)
           this.syncPill()
         }
         break
@@ -221,6 +223,8 @@ export class DictationController extends EventEmitter<{ pill: [PillState]; histo
     if (this.noticeTimer) clearTimeout(this.noticeTimer)
     this.noticeTimer = null
 
+    // Read the target before anything of ours can disturb focus.
+    const context = this.deps.settings().useAppContext || mode === 'command' ? helper.getContext(CONTEXT_CHARS) : Promise.resolve(null)
     const session: Session = {
       id: randomUUID(),
       mode,
@@ -229,9 +233,8 @@ export class DictationController extends EventEmitter<{ pill: [PillState]; histo
       locked,
       cancelled: false,
       chunks: [],
-      // Read the target before anything of ours can disturb focus.
-      context: this.deps.settings().useAppContext || mode === 'command' ? helper.getContext(CONTEXT_CHARS) : Promise.resolve(null),
-      screen: mode === 'command' ? this.readScreen() : Promise.resolve(null),
+      context,
+      screen: mode === 'command' ? this.screenAfter(context) : Promise.resolve(null),
       tapTimer: null,
       maxTimer: null,
       onCaptureStopped: null,
@@ -246,8 +249,16 @@ export class DictationController extends EventEmitter<{ pill: [PillState]; histo
 
   /** Screen text never leaves the machine: only the built-in model gets it, so nothing else reads it. */
   private readScreen(): Promise<WindowText | null> {
-    if (this.deps.settings().llmProvider !== 'local') return Promise.resolve(null)
+    if (this.deps.settings().llmProvider !== 'local' || !this.deps.llm.available) return Promise.resolve(null)
     return this.deps.helper.getWindowText(SCREEN_CHARS).catch(() => null)
+  }
+
+  /** A command on a selection never uses the screen, so it is read only when the context shows none. */
+  private screenAfter(context: Promise<HelperContext | null>): Promise<WindowText | null> {
+    return context.then(
+      (current) => (current?.text?.selected ? null : this.readScreen()),
+      () => this.readScreen(),
+    )
   }
 
   captureStarted(sessionId: string): void {
@@ -507,10 +518,15 @@ export class DictationController extends EventEmitter<{ pill: [PillState]; histo
 
   /**
    * Opens an app, a site or a web search. Never reads the selection, calls the model or pastes.
-   * Returns null when the session was cancelled on the way.
+   * Returns null when the session was cancelled before anything was opened. Once the launch or the browser has been
+   * asked, the thing opens anyway, so a cancel after that point is ignored and the result is reported as usual.
    */
   private async runAction(session: Session, route: Extract<CommandRoute, { kind: 'open' | 'search' }>, searchUrl: string): Promise<ActionOutcome | null> {
     const { db, helper, capture } = this.deps
+    // A cancel ends the session, so a newer one may own the pill by the time the action reports back.
+    const notice = (kind: 'info' | 'error', text: string) => {
+      if (this.session === null || this.session === session) this.notice(kind, text)
+    }
     let target: OpenTarget
     if (route.kind === 'open') {
       const apps = await this.apps.apps()
@@ -523,12 +539,11 @@ export class DictationController extends EventEmitter<{ pill: [PillState]; histo
     if (target.kind === 'app') {
       const { name, id } = target.app
       const launched = await helper.launchApp(id)
-      if (session.cancelled) return null
       if (!launched) {
-        this.notice('error', `Could not open ${name}.`)
+        notice('error', `Could not open ${name}.`)
         return { status: 'failed', error: 'launch_failed', finalText: `Open ${name}`, target: target.kind }
       }
-      this.notice('info', `Opening ${name}`)
+      notice('info', `Opening ${name}`)
       return { status: 'action', error: null, finalText: `Opened ${name}`, target: target.kind }
     }
 
@@ -537,15 +552,13 @@ export class DictationController extends EventEmitter<{ pill: [PillState]; histo
       if (this.urlOverride) this.urlOverride(url)
       else await this.deps.openUrl(url)
     } catch {
-      if (session.cancelled) return null
       // The error text may contain the URL, so it stays out of the log.
       log.warn('Could not open the browser')
       capture.copyToClipboard(url)
-      this.notice('error', 'Could not open the browser. The link is on your clipboard.')
+      notice('error', 'Could not open the browser. The link is on your clipboard.')
       return { status: 'failed', error: 'open_failed', finalText: url, target: target.kind }
     }
-    if (session.cancelled) return null
-    this.notice(
+    notice(
       'info',
       target.kind === 'url'
         ? `Opening ${target.label}`

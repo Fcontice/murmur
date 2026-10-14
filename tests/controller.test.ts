@@ -269,11 +269,43 @@ describe('command mode', () => {
     expect(lastNotice(t)?.notice?.text).toBe("Didn't catch a command. Try again.")
   })
 
-  it('starts reading the window text as soon as the session starts', () => {
+  it('starts reading the window text as soon as the session starts', async () => {
     const t = setup({ llmAvailable: true })
     t.controller.handleShortcut('command', 'down')
+    await vi.advanceTimersByTimeAsync(0)
     expect(t.helper.getWindowText).toHaveBeenCalledWith(6000)
     expect(t.asr.transcribe).not.toHaveBeenCalled()
+  })
+
+  it('does not read window text when no model could use it', async () => {
+    const t = setup({ llmAvailable: false, transcript: 'open spotify' })
+    await command(t)
+    expect(t.helper.getWindowText).not.toHaveBeenCalled()
+  })
+
+  it('does not read window text when something is selected', async () => {
+    const t = setup({ llmAvailable: true, transcript: 'make this shorter', selected: 'Some text.', windowText: 'Other text' })
+    await command(t)
+    expect(t.helper.getWindowText).not.toHaveBeenCalled()
+    expect((t.llm.complete.mock.calls[0]![0] as { user: string }).user).not.toContain('screen_text')
+  })
+
+  it('reads the context and the window text once when dictation is upgraded to a command', async () => {
+    const t = setup({ llmAvailable: true, transcript: 'reply to this', windowText: 'Can we meet Friday?', settings: { useAppContext: false } })
+    t.controller.handleShortcut('ptt', 'down')
+    expect(t.helper.getContext).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(80)
+    t.controller.handleShortcut('command', 'down')
+    t.record()
+    vi.advanceTimersByTime(900)
+    t.controller.handleShortcut('command', 'up')
+    t.controller.handleShortcut('ptt', 'up')
+    await t.settle()
+    expect(t.helper.getContext).toHaveBeenCalledOnce()
+    expect(t.helper.getWindowText).toHaveBeenCalledOnce()
+    const request = t.llm.complete.mock.calls[0]![0] as { user: string }
+    expect(request.user).toContain('<screen_text>\nCan we meet Friday?\n</screen_text>')
+    expect(t.history[0]).toMatchObject({ appName: 'Notepad' })
   })
 })
 
@@ -347,6 +379,42 @@ describe('command actions', () => {
     expect(t.history).toHaveLength(0)
   })
 
+  it('finishes an app launch that was already dispatched when cancel comes', async () => {
+    const t = setup({ transcript: 'open spotify' })
+    let release: (ok: boolean) => void = () => undefined
+    t.helper.launchApp.mockImplementation(() => new Promise((resolve) => (release = resolve)))
+    t.controller.handleShortcut('command', 'down')
+    t.record()
+    vi.advanceTimersByTime(900)
+    t.controller.handleShortcut('command', 'up')
+    t.controller.captureStopped(t.sessionId())
+    await vi.advanceTimersByTimeAsync(10)
+    expect(t.helper.launchApp).toHaveBeenCalledOnce()
+    t.controller.handleShortcut('cancel', 'down')
+    release(true)
+    await vi.advanceTimersByTimeAsync(10)
+    expect(t.history[0]).toMatchObject({ status: 'action', finalText: 'Opened Spotify' })
+    expect(lastNotice(t)?.notice?.text).toBe('Opening Spotify')
+  })
+
+  it('finishes opening a URL that was already dispatched when cancel comes', async () => {
+    const t = setup({ transcript: 'go to github dot com' })
+    let release: () => void = () => undefined
+    t.openUrl.mockImplementation(() => new Promise<void>((resolve) => (release = resolve)))
+    t.controller.handleShortcut('command', 'down')
+    t.record()
+    vi.advanceTimersByTime(900)
+    t.controller.handleShortcut('command', 'up')
+    t.controller.captureStopped(t.sessionId())
+    await vi.advanceTimersByTimeAsync(10)
+    expect(t.openUrl).toHaveBeenCalledOnce()
+    t.controller.handleShortcut('cancel', 'down')
+    release()
+    await vi.advanceTimersByTimeAsync(10)
+    expect(t.history[0]).toMatchObject({ status: 'action', finalText: 'https://github.com' })
+    expect(lastNotice(t)?.notice?.text).toBe('Opening github.com')
+  })
+
   it('keeps targets out of the log', async () => {
     const t = setup({ transcript: 'open spotify' })
     await command(t)
@@ -369,6 +437,13 @@ describe('command writing', () => {
     expect(request.user).toContain('Translate this into Spanish')
     expect(t.db.listCommands().find((entry) => entry.name === 'Spanish')?.uses).toBe(1)
     expect(t.helper.paste).toHaveBeenCalledWith('Rewritten text.', expect.anything())
+  })
+
+  it('sends no window text with a saved command on a selection', async () => {
+    const t = setup({ llmAvailable: true, transcript: 'Spanish', selected: 'Good morning', windowText: 'Other text' })
+    await command(t)
+    expect(t.helper.getWindowText).not.toHaveBeenCalled()
+    expect((t.llm.complete.mock.calls[0]![0] as { user: string }).user).not.toContain('screen_text')
   })
 
   it('passes extra spoken words to a saved command', async () => {
