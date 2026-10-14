@@ -91,14 +91,29 @@ async function ownWindowCheck() {
     stdio: 'ignore',
     env: { ...process.env, MURMUR_MARKER: MARKER },
   })
+  // Close our window however the run ends, including Ctrl+C.
+  const killForm = () => {
+    if (form.exitCode === null) form.kill()
+  }
+  const onSigint = () => {
+    killForm()
+    process.exit(130)
+  }
+  process.once('exit', killForm)
+  process.once('SIGINT', onSigint)
+  let startError = null
+  form.on('error', (error) => {
+    startError = error
+  })
   const exited = new Promise((resolve) => form.on('exit', resolve))
   try {
     let front = false
-    for (let attempt = 0; attempt < 32 && !front && form.exitCode === null; attempt++) {
+    for (let attempt = 0; attempt < 32 && !front && form.exitCode === null && !startError; attempt++) {
       await sleep(250)
       const context = await request('getContext', { maxChars: 1 })
       front = context.app?.pid === form.pid
     }
+    if (startError) return skip(name, `PowerShell could not start the test window (${startError.code ?? startError.message})`)
     if (!front) {
       return skip(name, 'the test window did not come to the foreground (Windows keeps focus with the app in use; run from a focused terminal)')
     }
@@ -107,8 +122,10 @@ async function ownWindowCheck() {
     if (!window.ok && window.error === 'elevated') return skip(name, 'the foreground window is elevated')
     check(name, window.ok && found, `marker found: ${found ? 'yes' : 'no'}; ${window.source ?? window.error}: ${window.text?.length ?? 0} chars in ${window.elapsedMs} ms`)
   } finally {
-    if (form.exitCode === null) form.kill() // our own PowerShell process, by its handle
+    killForm() // our own PowerShell process, by its handle
     await Promise.race([exited, sleep(3000)])
+    process.removeListener('exit', killForm)
+    process.removeListener('SIGINT', onSigint)
   }
 }
 
