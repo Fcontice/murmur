@@ -1,7 +1,7 @@
 {
   "name": "gloop-voice",
   "productName": "Gloop Voice",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Local voice dictation that writes for you in any app",
   "private": true,
   "main": "out/main/index.js",
