@@ -229,7 +229,7 @@ export class DictationController extends EventEmitter<{ pill: [PillState]; histo
   private start(mode: DictationMode, locked: boolean): void {
     const { asr, helper, capture } = this.deps
     if (asr.state !== 'ready') {
-      this.notice(asr.state === 'loading' ? 'info' : 'error', asr.state === 'loading' ? 'The speech model is still loading. Try again in a moment.' : asr.detail || 'No speech model is set up. Open Murmur to finish setup.')
+      this.notice(asr.state === 'loading' ? 'info' : 'error', asr.state === 'loading' ? 'The speech model is still loading. Try again in a moment.' : asr.detail || 'No speech model is set up. Open Gloop Voice to finish setup.')
       return
     }
     if (this.noticeTimer) clearTimeout(this.noticeTimer)
@@ -524,7 +524,7 @@ export class DictationController extends EventEmitter<{ pill: [PillState]; histo
         status = 'copied'
         error = pasted.error ?? 'paste_failed'
         this.notice('error', pasted.error === 'target_elevated'
-          ? 'This window runs as administrator, so Murmur cannot type into it. The text is on your clipboard.'
+          ? 'This window runs as administrator, so Gloop Voice cannot type into it. The text is on your clipboard.'
           : 'Could not insert the text. It is on your clipboard: press Ctrl+V.')
       }
       this.lastText = text.trim()

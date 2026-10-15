@@ -58,7 +58,7 @@ export class Helper extends EventEmitter<HelperEvents> {
   private loggedUnavailable = new Set<string>()
 
   start(): void {
-    const exe = resourcePath('helper', 'murmur-helper.exe')
+    const exe = resourcePath('helper', 'gloop-voice-helper.exe')
     if (!existsSync(exe)) {
       log.error(`Helper not found at ${exe}. Run "npm run helper:build".`)
       this.setStatus('failed')

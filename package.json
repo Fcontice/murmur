@@ -1,6 +1,6 @@
 {
-  "name": "murmur",
-  "productName": "Murmur",
+  "name": "gloop-voice",
+  "productName": "Gloop Voice",
   "version": "0.2.0",
   "description": "Local voice dictation that writes for you in any app",
   "private": true,
@@ -16,13 +16,13 @@
     "test:prompts": "vitest run --config vitest.eval.config.ts",
     "test:hook": "node scripts/helper-hook-test.cjs",
     "test:helper": "node scripts/helper-commands-test.cjs",
-    "helper:build": "dotnet publish helper/Murmur.Helper/Murmur.Helper.csproj -c Release -r win-x64 --self-contained true -o resources/helper --nologo -v q",
+    "helper:build": "dotnet publish helper/GloopVoice.Helper/GloopVoice.Helper.csproj -c Release -r win-x64 --self-contained true -o resources/helper --nologo -v q",
     "resources": "npm run helper:build && node scripts/fetch-llama.cjs && node scripts/make-icon.cjs",
     "dist": "npm run resources && electron-vite build && electron-builder --win --publish never"
   },
   "build": {
-    "appId": "com.fcontice.murmur",
-    "productName": "Murmur",
+    "appId": "com.fcontice.gloopvoice",
+    "productName": "Gloop Voice",
     "directories": {
       "output": "dist",
       "buildResources": "build"

@@ -68,7 +68,7 @@ export function Empty({ title, children }: { title: string; children?: ReactNode
 
 /** A downloadable item. Without `onSelect` it is an optional add-on rather than one of a set of choices. */
 export function ModelRow({ model, selected = false, onSelect }: { model: ModelStatus; selected?: boolean; onSelect?: () => void }) {
-  const api = window.murmur
+  const api = window.gloopVoice
   return (
     <div className={`model ${selected ? 'selected' : ''}`}>
       <label className="model-main">

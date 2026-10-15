@@ -4,7 +4,7 @@ import type { SavedCommand, Settings, Site } from '@shared/types'
 import { Empty, Keys, Row, Segmented } from '../components'
 import { errorMessage } from '../hooks'
 
-const api = window.murmur
+const api = window.gloopVoice
 const CUSTOM = 'Custom'
 
 interface Props {

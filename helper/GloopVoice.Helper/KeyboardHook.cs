@@ -1,8 +1,8 @@
 using System.Runtime.InteropServices;
 using System.Text.Json.Nodes;
-using static Murmur.Helper.Native;
+using static GloopVoice.Helper.Native;
 
-namespace Murmur.Helper;
+namespace GloopVoice.Helper;
 
 internal sealed record Binding(string Id, HashSet<int> Keys, bool WhileCapturing);
 
@@ -22,8 +22,8 @@ internal sealed class KeyboardHook
     private bool _recording;
     private readonly HashSet<int> _recordedChord = new();
 
-    /// <summary>Set by MURMUR_HELPER_TEST=1 so an automated check can press keys with SendInput.</summary>
-    public static readonly bool AcceptInjected = Environment.GetEnvironmentVariable("MURMUR_HELPER_TEST") == "1";
+    /// <summary>Set by GLOOP_VOICE_HELPER_TEST=1 so an automated check can press keys with SendInput.</summary>
+    public static readonly bool AcceptInjected = Environment.GetEnvironmentVariable("GLOOP_VOICE_HELPER_TEST") == "1";
 
     private LowLevelKeyboardProc? _proc;
     private IntPtr _hook;

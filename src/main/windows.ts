@@ -37,7 +37,7 @@ export function createHubWindow(icon: Electron.NativeImage): BrowserWindow {
     minHeight: 600,
     show: false,
     backgroundColor: '#0a0a0b',
-    title: 'Murmur',
+    title: 'Gloop Voice',
     icon,
     autoHideMenuBar: true,
     webPreferences,

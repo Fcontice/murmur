@@ -6,8 +6,8 @@ const path = require('node:path')
 const readline = require('node:readline')
 
 const CTRL = 0xa2, WIN = 0x5b, ALT = 0xa4
-const exe = path.join(__dirname, '..', 'resources', 'helper', 'murmur-helper.exe')
-const child = spawn(exe, [], { stdio: ['pipe', 'pipe', 'inherit'], env: { ...process.env, MURMUR_HELPER_TEST: '1' } })
+const exe = path.join(__dirname, '..', 'resources', 'helper', 'gloop-voice-helper.exe')
+const child = spawn(exe, [], { stdio: ['pipe', 'pipe', 'inherit'], env: { ...process.env, GLOOP_VOICE_HELPER_TEST: '1' } })
 
 const events = []
 const replies = new Map()

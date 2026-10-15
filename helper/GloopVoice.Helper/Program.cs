@@ -1,6 +1,6 @@
 using System.Text.Json.Nodes;
 
-namespace Murmur.Helper;
+namespace GloopVoice.Helper;
 
 internal static class Program
 {

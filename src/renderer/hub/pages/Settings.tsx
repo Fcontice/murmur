@@ -6,7 +6,7 @@ import { Keys, ModelRow, Row, Section, Segmented, Toggle } from '../components'
 import { errorMessage } from '../hooks'
 import { MicPicker } from '../MicPicker'
 
-const api = window.murmur
+const api = window.gloopVoice
 
 interface Props {
   settings: Settings
@@ -108,7 +108,7 @@ export function SettingsPage({ settings, update, status, models }: Props) {
         <h1>Settings</h1>
       </header>
 
-      <Section title="Shortcuts" description="Shortcuts work in every app while Murmur is running.">
+      <Section title="Shortcuts" description="Shortcuts work in every app while Gloop Voice is running.">
         {SHORTCUTS.map((shortcut) => (
           <ShortcutRow key={shortcut.action} {...shortcut} settings={settings} update={update} />
         ))}

@@ -1,6 +1,6 @@
-# What Wispr Flow does, and how Murmur relates to it
+# What Wispr Flow does, and how Gloop Voice relates to it
 
-Findings from static analysis of Wispr Flow 1.6.1102 for Windows (the public installer, fetched with `winget download`, never installed or run). Murmur is an independent implementation of the same kind of product: no Wispr code, assets, prompts or services are used.
+Findings from static analysis of Wispr Flow 1.6.1102 for Windows (the public installer, fetched with `winget download`, never installed or run). Gloop Voice is an independent implementation of the same kind of product: no Wispr code, assets, prompts or services are used.
 
 ## Method
 
@@ -53,7 +53,7 @@ Everything below is from shipped artifacts. Server-side behaviour (the speech an
 
 Dictionary (vocabulary and "replace X with Y" rows), snippets (stored as dictionary rows), styles per app category (personal, work, email, other × formal, casual, very casual, excited), auto clean-up levels, history with audio retry, transforms on selected text, command mode, scratchpad notes, meeting notetaker, calendar, teams and billing.
 
-## What Murmur does the same way
+## What Gloop Voice does the same way
 
 - The gesture model: exact-set chord matching, the 500 ms tap window, double-tap lock, the 1 s other-key cancel, the 20-minute cap, the same default chords.
 - 16 kHz mono capture in 40 ms blocks with processing off.
@@ -61,9 +61,9 @@ Dictionary (vocabulary and "replace X with Y" rows), snippets (stored as diction
 - Caret context from UI Automation and the same family of spacing rules.
 - App categories mapped to writing styles; editing strengths.
 
-## What Murmur does differently
+## What Gloop Voice does differently
 
-| Area | Wispr Flow | Murmur |
+| Area | Wispr Flow | Gloop Voice |
 |---|---|---|
 | Speech recognition | Cloud | Local (Parakeet or Whisper via sherpa-onnx), or your own endpoint |
 | Formatting | Cloud LLM | Local Gemma via llama.cpp, or your own endpoint; deterministic fallback |

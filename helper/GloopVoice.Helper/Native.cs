@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace Murmur.Helper;
+namespace GloopVoice.Helper;
 
 internal static class Native
 {

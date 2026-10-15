@@ -11,7 +11,7 @@ import type { EditingStrength, WritingStyle } from '@shared/types'
 import { buildCommandRequest, buildFormatRequest, estimateTokens, restoreTags, stripLeadingEllipsis, tidyModelOutput, type ChatRequest } from '../../src/main/llm/prompts'
 import { runPipeline } from '../../src/main/text/pipeline'
 
-const models = join(process.env.LOCALAPPDATA ?? '', 'Murmur', 'models')
+const models = join(process.env.LOCALAPPDATA ?? '', 'Gloop Voice', 'models')
 const modelPath = join(models, process.env.EVAL_MODEL ?? 'gemma-3-4b-it', 'model.gguf')
 const cuda = join(models, 'llama-cuda', 'llama-server.exe')
 const bundled = join(__dirname, '..', '..', 'resources', 'llama', 'llama-server.exe')

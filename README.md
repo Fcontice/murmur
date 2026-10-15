@@ -1,4 +1,4 @@
-# Murmur
+# Gloop Voice
 
 Voice dictation for Windows that types into whatever app has focus, with speech recognition and AI clean-up running on your own machine.
 
@@ -23,7 +23,7 @@ For command mode, the focused window's visible text is read on demand when nothi
 
 ## Install
 
-Run `dist\Murmur Setup 0.2.0.exe`. The installer is not code-signed, so Windows SmartScreen will ask for confirmation.
+Run `dist\Gloop Voice Setup 0.2.0.exe`. The installer is not code-signed, so Windows SmartScreen will ask for confirmation.
 
 First launch walks through downloading models:
 
@@ -33,7 +33,7 @@ First launch walks through downloading models:
 | Gemma 3 4B (clean-up) | 2.5 GB | Optional |
 | NVIDIA GPU acceleration | 660 MB | Optional, offered on NVIDIA machines |
 
-Models are kept in `%LOCALAPPDATA%\Murmur\models`. Settings, history and logs are in `%APPDATA%\Murmur`.
+Models are kept in `%LOCALAPPDATA%\Gloop Voice\models`. Settings, history and logs are in `%APPDATA%\Gloop Voice`.
 
 ## Develop
 
@@ -50,9 +50,9 @@ npm run test:helper   # helper app list, app launch and window text (opens Chara
 npm run dist          # build the installer into dist/
 ```
 
-Set `MURMUR_USER_DATA` to a scratch folder to run against a separate profile.
+Set `GLOOP_VOICE_USER_DATA` to a scratch folder to run against a separate profile.
 
-`MURMUR_SELFTEST=<output folder>` runs an end-to-end check in a dev build: it dictates recorded clips through the real helper and models into the app's own text box and writes `results.json` plus screenshots. It brings the Murmur window to the front while it runs. It refuses to start without `MURMUR_USER_DATA`.
+`GLOOP_VOICE_SELFTEST=<output folder>` runs an end-to-end check in a dev build: it dictates recorded clips through the real helper and models into the app's own text box and writes `results.json` plus screenshots. It brings the Gloop Voice window to the front while it runs. It refuses to start without `GLOOP_VOICE_USER_DATA`.
 
 The command-mode clips in `tests/fixtures` come from `powershell -File scripts/make-fixtures.ps1` (needs the Microsoft Zira voice; the dictation, command and snippet clips are recordings it leaves alone). Check what the speech model hears in a clip with `node scripts/bench-asr.cjs tests/fixtures/<name>.wav`.
 
@@ -65,11 +65,11 @@ The command-mode clips in `tests/fixtures` come from `powershell -File scripts/m
 | Language model | `src/main/llm` | Bundled llama.cpp server as a child process, or any OpenAI-compatible endpoint |
 | Text pipeline | `src/main/text` | Clean-up, dictionary, snippets, spacing; pure functions |
 | Command actions | `src/main/command` | Command-mode routing, open-target resolution, installed-app catalogue |
-| Native helper | `helper/Murmur.Helper` | C#: global key hook, paste, focused-app context, app list and launch, window text over stdin/stdout JSON |
+| Native helper | `helper/GloopVoice.Helper` | C#: global key hook, paste, focused-app context, app list and launch, window text over stdin/stdout JSON |
 | Pill | `src/renderer/pill` | Floating indicator; also captures the microphone |
 | Main window | `src/renderer/hub` | React UI |
 
-`docs/reverse-engineering.md` records what was learned from Wispr Flow and how Murmur differs.
+`docs/reverse-engineering.md` records what was learned from Wispr Flow and how Gloop Voice differs.
 
 ## Not included
 

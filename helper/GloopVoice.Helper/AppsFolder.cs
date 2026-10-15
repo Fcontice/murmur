@@ -2,7 +2,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.Json.Nodes;
 
-namespace Murmur.Helper;
+namespace GloopVoice.Helper;
 
 /// <summary>
 /// The Windows "Apps" folder: what the Start menu lists, desktop and Store apps alike. Apps are launched

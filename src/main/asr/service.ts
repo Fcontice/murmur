@@ -75,7 +75,7 @@ export class AsrService extends EventEmitter<{ status: [AsrState, string] }> {
 
   private startWorker(load: Extract<WorkerRequest, { type: 'load' }>, name: string): void {
     this.setState('loading', `Loading ${name}…`)
-    const worker = utilityProcess.fork(join(__dirname, 'asrWorker.js'), [], { serviceName: 'Murmur speech recognition', stdio: 'pipe' })
+    const worker = utilityProcess.fork(join(__dirname, 'asrWorker.js'), [], { serviceName: 'Gloop Voice speech recognition', stdio: 'pipe' })
     this.worker = worker
     worker.stderr?.on('data', (chunk: Buffer) => {
       const text = chunk.toString().trim()

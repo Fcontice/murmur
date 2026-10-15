@@ -3,7 +3,7 @@ import type { Snippet } from '@shared/types'
 import { Empty } from '../components'
 import { errorMessage } from '../hooks'
 
-const api = window.murmur
+const api = window.gloopVoice
 const MAX_EXPANSION = 4000
 
 export function Snippets() {
@@ -38,7 +38,7 @@ export function Snippets() {
     <div className="page">
       <header className="page-header">
         <h1>Snippets</h1>
-        <p>Say a short phrase and Murmur inserts the longer text you saved: an address, a link, a standard reply.</p>
+        <p>Say a short phrase and Gloop Voice inserts the longer text you saved: an address, a link, a standard reply.</p>
       </header>
 
       <form className="card form" onSubmit={(event) => void submit(event)}>

@@ -1,8 +1,8 @@
 using System.Diagnostics;
 using System.Text.Json.Nodes;
-using static Murmur.Helper.Native;
+using static GloopVoice.Helper.Native;
 
-namespace Murmur.Helper;
+namespace GloopVoice.Helper;
 
 internal sealed class Paster(KeyboardHook hook)
 {

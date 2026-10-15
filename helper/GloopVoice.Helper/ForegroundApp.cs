@@ -3,9 +3,9 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json.Nodes;
 using Interop.UIAutomationClient;
-using static Murmur.Helper.Native;
+using static GloopVoice.Helper.Native;
 
-namespace Murmur.Helper;
+namespace GloopVoice.Helper;
 
 internal static class ForegroundApp
 {

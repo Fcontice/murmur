@@ -1,6 +1,6 @@
 /**
  * End-to-end check of the running app, used during development:
- *   MURMUR_SELFTEST=<output dir> MURMUR_USER_DATA=<scratch dir> electron .
+ *   GLOOP_VOICE_SELFTEST=<output dir> GLOOP_VOICE_USER_DATA=<scratch dir> electron .
  * It drives the real helper, speech model and language model, dictating recorded clips into the app's
  * own "Try it" box so no other application is touched. Physical key presses are the one thing it
  * cannot simulate, because the keyboard hook deliberately ignores injected input.
@@ -135,7 +135,7 @@ export async function runSelfTest(context: SelfTestContext): Promise<void> {
   }
   const shot = async (window: BrowserWindow, name: string) => writeFileSync(join(outDir, `${name}.png`), (await window.webContents.capturePage()).toPNG())
 
-  const isForeground = async () => /electron|murmur/i.test((await helper.getContext(200))?.app.process ?? '')
+  const isForeground = async () => /electron|gloop.?voice/i.test((await helper.getContext(200))?.app.process ?? '')
 
   const dictate = async (clip: string, mode: 'handsFree' | 'command') => {
     // Windows only lets a background app come forward in a few situations; restoring from
@@ -151,7 +151,7 @@ export async function runSelfTest(context: SelfTestContext): Promise<void> {
       hub.setAlwaysOnTop(false)
     }
     const focus = await helper.getContext(200)
-    if (!/electron|murmur/i.test(focus?.app.process ?? '')) throw new Error(`Murmur is not the foreground app (${focus?.app.process}); skipped to avoid typing elsewhere`)
+    if (!/electron|gloop.?voice/i.test(focus?.app.process ?? '')) throw new Error(`Gloop Voice is not the foreground app (${focus?.app.process}); skipped to avoid typing elsewhere`)
     controller.audioOverride = readWavPcm(join(fixtures, `${clip}.wav`))
     controller.handleShortcut(mode, 'down')
     await sleep(700)
@@ -254,7 +254,7 @@ export async function runSelfTest(context: SelfTestContext): Promise<void> {
   /** Command-mode history written since `since`, newest first. */
   const commandEntries = (since: number) => db.listHistory('', 50, 0).filter((entry) => entry.mode === 'command' && entry.createdAt >= since)
 
-  /** Actions never paste; the empty "Try it" box only keeps the focus inside Murmur's own window. */
+  /** Actions never paste; the empty "Try it" box only keeps the focus inside Gloop Voice's own window. */
   const commandClip = async (clip: string) => {
     await showPage('Home')
     await js(`(() => { const box = document.querySelector('.try'); box.value = ''; box.focus() })()`)

@@ -14,7 +14,7 @@ const show = (line) => {
   }
 }
 
-const exe = path.join(__dirname, '..', 'resources', 'helper', 'murmur-helper.exe')
+const exe = path.join(__dirname, '..', 'resources', 'helper', 'gloop-voice-helper.exe')
 const child = spawn(exe, [], { stdio: ['pipe', 'pipe', 'inherit'] })
 const lines = readline.createInterface({ input: child.stdout })
 lines.on('line', (line) => console.log('<-', show(line)))

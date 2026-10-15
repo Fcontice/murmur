@@ -3,7 +3,7 @@ import type { PillState } from '@shared/types'
 import { Recorder } from './capture'
 import { playSound } from './sounds'
 
-const api = window.murmurPill
+const api = window.gloopVoicePill
 const pill = document.getElementById('pill')!
 const hint = pill.querySelector<HTMLElement>('.hint')!
 const notice = pill.querySelector<HTMLElement>('.notice')!

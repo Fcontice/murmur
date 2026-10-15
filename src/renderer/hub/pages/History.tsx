@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { HistoryEntry } from '@shared/types'
 import { Empty } from '../components'
 
-const api = window.murmur
+const api = window.gloopVoice
 const PAGE_SIZE = 50
 
 function dayLabel(timestamp: number): string {

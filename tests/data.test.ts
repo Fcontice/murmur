@@ -321,9 +321,9 @@ describe('database file', () => {
   }
 
   function inTempDir(test: (file: string) => void): void {
-    const dir = mkdtempSync(join(tmpdir(), 'murmur-db-'))
+    const dir = mkdtempSync(join(tmpdir(), 'gloop-voice-db-'))
     try {
-      test(join(dir, 'murmur.sqlite'))
+      test(join(dir, 'gloop-voice.sqlite'))
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

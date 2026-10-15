@@ -2,9 +2,9 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Json.Nodes;
 using Interop.UIAutomationClient;
-using static Murmur.Helper.Native;
+using static GloopVoice.Helper.Native;
 
-namespace Murmur.Helper;
+namespace GloopVoice.Helper;
 
 /// <summary>
 /// Visible text of the foreground window for command mode ("reply to this", "summarize this"). Prefers the

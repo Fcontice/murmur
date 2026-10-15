@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const root = mkdtempSync(join(tmpdir(), 'murmur-models-'))
+const root = mkdtempSync(join(tmpdir(), 'gloop-voice-models-'))
 vi.mock('../src/main/paths', () => ({ modelsDir: () => join(root, 'models') }))
 vi.mock('../src/main/log', () => ({ logger: () => ({ info: () => undefined, warn: () => undefined, error: () => undefined }) }))
 

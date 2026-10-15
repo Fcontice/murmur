@@ -7,8 +7,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <AssemblyName>murmur-helper</AssemblyName>
-    <RootNamespace>Murmur.Helper</RootNamespace>
+    <AssemblyName>gloop-voice-helper</AssemblyName>
+    <RootNamespace>GloopVoice.Helper</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <InvariantGlobalization>true</InvariantGlobalization>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>

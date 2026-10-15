@@ -2,7 +2,7 @@
 const path = require('node:path')
 const sherpa = require('sherpa-onnx-node')
 
-const dir = path.join(process.env.LOCALAPPDATA, 'Murmur', 'models', 'parakeet-tdt-0.6b-v3')
+const dir = path.join(process.env.LOCALAPPDATA, 'Gloop Voice', 'models', 'parakeet-tdt-0.6b-v3')
 const wavPath = process.argv[2] || path.join(__dirname, '..', 'tests', 'fixtures', 'dictation.wav')
 
 const t0 = Date.now()

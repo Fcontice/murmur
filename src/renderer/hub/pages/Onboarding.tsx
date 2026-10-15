@@ -4,7 +4,7 @@ import { Keys, ModelRow } from '../components'
 import { formatBytes } from '../hooks'
 import { MicPicker } from '../MicPicker'
 
-const api = window.murmur
+const api = window.gloopVoice
 
 interface Props {
   settings: Settings
@@ -37,7 +37,7 @@ export function Onboarding({ settings, update, status, models }: Props) {
           <span className="brand-mark" aria-hidden="true">
             <i /><i /><i /><i />
           </span>
-          Murmur
+          Gloop Voice
         </div>
         <ol className="steps">
           {STEPS.map((label, index) => (
@@ -51,7 +51,7 @@ export function Onboarding({ settings, update, status, models }: Props) {
           <>
             <h1>Everything runs on this computer</h1>
             <p className="lead">
-              Murmur turns speech into text with models stored locally, so your voice and words stay private and it works offline. They need downloading once.
+              Gloop Voice turns speech into text with models stored locally, so your voice and words stay private and it works offline. They need downloading once.
             </p>
             <h2>Speech recognition</h2>
             <div className="card">

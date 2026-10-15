@@ -10,7 +10,7 @@ import { Helper } from './helper'
 import { LlmService, reapStaleServer } from './llm/service'
 import { logger } from './log'
 import { ModelManager } from './models'
-import { resourcePath, userFile } from './paths'
+import { dbFile, migrateLegacyData, resourcePath } from './paths'
 import { SettingsStore } from './settings-store'
 import { createHubWindow, createPillWindow, positionPill } from './windows'
 
@@ -18,24 +18,25 @@ const log = logger('app')
 const startHidden = process.argv.includes('--hidden')
 
 // A separate profile for development and automated checks, so they never touch real data.
-if (process.env.MURMUR_USER_DATA) app.setPath('userData', process.env.MURMUR_USER_DATA)
+if (process.env.GLOOP_VOICE_USER_DATA) app.setPath('userData', process.env.GLOOP_VOICE_USER_DATA)
+migrateLegacyData()
 
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
-  app.setAppUserModelId('com.fcontice.murmur')
+  app.setAppUserModelId('com.fcontice.gloopvoice')
   void app.whenReady().then(main)
 }
 
 async function main(): Promise<void> {
   // The self-test writes history, snippets and settings, so it never runs against the real profile.
-  if (process.env.MURMUR_SELFTEST && !app.isPackaged && !process.env.MURMUR_USER_DATA) {
-    log.error('The self-test needs MURMUR_USER_DATA set to a scratch folder; quitting')
+  if (process.env.GLOOP_VOICE_SELFTEST && !app.isPackaged && !process.env.GLOOP_VOICE_USER_DATA) {
+    log.error('The self-test needs GLOOP_VOICE_USER_DATA set to a scratch folder; quitting')
     app.quit()
     return
   }
   const settings = new SettingsStore()
-  const db = new Database(userFile('murmur.sqlite'))
+  const db = new Database(dbFile())
   const models = new ModelManager()
   const helper = new Helper()
   const asr = new AsrService(models)
@@ -277,17 +278,17 @@ async function main(): Promise<void> {
   function refreshTray(): void {
     const current = settings.get()
     const ready = helper.status === 'ready' && asr.state === 'ready'
-    tray.setToolTip(ready ? `Murmur · hold ${shortcutLabel(current.shortcuts.ptt)} to dictate` : 'Murmur · setting up')
+    tray.setToolTip(ready ? `Gloop Voice · hold ${shortcutLabel(current.shortcuts.ptt)} to dictate` : 'Gloop Voice · setting up')
     tray.setContextMenu(
       Menu.buildFromTemplate([
-        { label: 'Open Murmur', click: showHub },
+        { label: 'Open Gloop Voice', click: showHub },
         { type: 'separator' },
         { label: `Dictate: ${shortcutLabel(current.shortcuts.ptt)}`, enabled: false },
         { label: `Hands-free: ${shortcutLabel(current.shortcuts.handsFree)}`, enabled: false },
         { type: 'separator' },
         { label: 'Sounds', type: 'checkbox', checked: current.sounds, click: (item) => void settings.update({ sounds: item.checked }) },
         { type: 'separator' },
-        { label: 'Quit Murmur', click: () => app.quit() },
+        { label: 'Quit Gloop Voice', click: () => app.quit() },
       ]),
     )
   }
@@ -314,10 +315,10 @@ async function main(): Promise<void> {
   await reapStaleServer()
   applySettings(settings.get())
   refreshTray()
-  log.info(`Murmur ${app.getVersion()} started`)
+  log.info(`Gloop Voice ${app.getVersion()} started`)
 
-  if (process.env.MURMUR_SELFTEST && !app.isPackaged) {
-    const outDir = process.env.MURMUR_SELFTEST
+  if (process.env.GLOOP_VOICE_SELFTEST && !app.isPackaged) {
+    const outDir = process.env.GLOOP_VOICE_SELFTEST
     void import('./selftest').then(({ runSelfTest }) => runSelfTest({ outDir, controller, helper, asr, llm, db, settings, pill, showHub }))
   } else if (!startHidden || !settings.get().onboarded) {
     showHub()

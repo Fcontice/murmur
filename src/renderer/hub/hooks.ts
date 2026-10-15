@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { EngineStatus, ModelStatus, Settings } from '@shared/types'
 
-const api = window.murmur
+const api = window.gloopVoice
 
 export function useSettings(): [Settings | null, (patch: Partial<Settings>) => Promise<string | null>] {
   const [settings, setSettings] = useState<Settings | null>(null)

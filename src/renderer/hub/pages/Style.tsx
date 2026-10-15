@@ -57,7 +57,7 @@ export function Style({ settings, update, status }: Props) {
     <div className="page">
       <header className="page-header">
         <h1>Style</h1>
-        <p>How much Murmur tidies what you say, and how the result should read in each kind of app.</p>
+        <p>How much Gloop Voice tidies what you say, and how the result should read in each kind of app.</p>
       </header>
 
       {modelOff && (

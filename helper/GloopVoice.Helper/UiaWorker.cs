@@ -1,7 +1,7 @@
 using System.Text.Json.Nodes;
 using Interop.UIAutomationClient;
 
-namespace Murmur.Helper;
+namespace GloopVoice.Helper;
 
 /// <summary>
 /// Runs a UI Automation read on its own MTA thread and abandons it at the budget, because providers can hang.

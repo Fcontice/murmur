@@ -15,7 +15,7 @@ export interface TestResult {
   message: string
 }
 
-/** Exposed to the main window as `window.murmur`. */
+/** Exposed to the main window as `window.gloopVoice`. */
 export interface HubApi {
   getSettings(): Promise<Settings>
   updateSettings(patch: Partial<Settings>): Promise<Settings>
@@ -71,7 +71,7 @@ export interface CaptureConfig {
   pttLabel: string
 }
 
-/** Exposed to the floating pill window as `window.murmurPill`. */
+/** Exposed to the floating pill window as `window.gloopVoicePill`. */
 export interface PillApi {
   onState(listener: (state: PillState) => void): Unsubscribe
   onConfig(listener: (config: CaptureConfig) => void): Unsubscribe

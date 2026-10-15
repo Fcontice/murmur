@@ -50,7 +50,7 @@ URLs open through `shell.openExternal`, restricted to `http` and `https`. Apps l
 
 ## Screen context
 
-- The helper's `getWindowText(maxChars)` walks the focused window's UI Automation tree. It collects document, edit and text content, and skips password fields, offscreen elements and duplicates. Murmur asks for 16,000 characters (the helper allows up to 20,000), keeping the text nearest the focus, and has a 1.5 s budget. On timeout or failure the command runs without context.
+- The helper's `getWindowText(maxChars)` walks the focused window's UI Automation tree. It collects document, edit and text content, and skips password fields, offscreen elements and duplicates. Gloop Voice asks for 16,000 characters (the helper allows up to 20,000), keeping the text nearest the focus, and has a 1.5 s budget. On timeout or failure the command runs without context.
 - When nothing is selected, the writing prompt gets a `<screen_text>` reference block. The model is told to produce what was asked for, not to restate the source.
 - Screen text goes only to the local model. With a remote provider it is left out, and the pill says so once.
 - Screen text is never logged. Only its length and timing are.
@@ -70,8 +70,8 @@ URLs open through `shell.openExternal`, restricted to `http` and `https`. Apps l
 
 1. Unit tests (vitest): router cases including lookalikes, open-target resolution order, domain detection, search URL encoding, prompt builders with and without screen text and with a remote provider, migration 2 and saved-command CRUD, and controller flows for every route and error path using a fake helper.
 2. Model evals (`npm run test:prompts`) against the installed local model: reply, summarize and saved commands on fixture screen text, checked for output shape.
-3. Helper smoke test: `listApps` returns real apps with IDs, `getWindowText` reads a known Murmur window within budget, and `launchApp` opens and then closes Notepad.
-4. End-to-end self-test (`MURMUR_SELFTEST`) with recorded clips for open, search, go to, a saved command and summarize. It asserts real effects (process launched, exact URL requested, text inserted into Murmur's own box) and saves screenshots. Paste steps keep the `requireForeground` guard.
+3. Helper smoke test: `listApps` returns real apps with IDs, `getWindowText` reads a known Gloop Voice window within budget, and `launchApp` opens and then closes Notepad.
+4. End-to-end self-test (`GLOOP_VOICE_SELFTEST`) with recorded clips for open, search, go to, a saved command and summarize. It asserts real effects (process launched, exact URL requested, text inserted into Gloop Voice's own box) and saves screenshots. Paste steps keep the `requireForeground` guard.
 5. A packaged build installed over the current copy, the self-test re-run on the installed app, and a manual checklist for physical key presses.
 
 ## Changes during implementation
@@ -86,5 +86,5 @@ URLs open through `shell.openExternal`, restricted to `http` and `https`. Apps l
 - Screen text is read only when a model can use it and nothing is selected, not on every command.
 - The screen budget is counted in estimated tokens (about 5,000) rather than characters, and with the built-in model a selection over about 3,000 tokens is refused with a notice. Remote models keep a 12,000-character limit.
 - Prompt tags and forged labels ("The user's instruction:") in screen text and selections are neutralised before the prompt is built and restored in the output.
-- The end-to-end self-test runs only in a dev build and refuses to start without `MURMUR_USER_DATA`.
+- The end-to-end self-test runs only in a dev build and refuses to start without `GLOOP_VOICE_USER_DATA`.
 - Known limit: Gemma 3 4B still obeys a short command at the end of the screen text. The eval keeps it as an expected failure; the impact is wrong typed text, not an action.

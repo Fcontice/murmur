@@ -3,7 +3,7 @@ import type { DictionaryEntry } from '@shared/types'
 import { Empty } from '../components'
 import { errorMessage } from '../hooks'
 
-const api = window.murmur
+const api = window.gloopVoice
 
 export function Dictionary() {
   const [entries, setEntries] = useState<DictionaryEntry[]>([])
@@ -44,7 +44,7 @@ export function Dictionary() {
     <div className="page">
       <header className="page-header">
         <h1>Dictionary</h1>
-        <p>Names, jargon and spellings Murmur should get right. Add how a word gets misheard and it is corrected every time.</p>
+        <p>Names, jargon and spellings Gloop Voice should get right. Add how a word gets misheard and it is corrected every time.</p>
       </header>
 
       <form className="card form" onSubmit={(event) => void submit(event)}>

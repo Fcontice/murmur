@@ -5,7 +5,7 @@ const { execFileSync, spawn } = require('node:child_process')
 const path = require('node:path')
 const readline = require('node:readline')
 
-const exe = process.argv[2] ?? path.join(__dirname, '..', 'resources', 'helper', 'murmur-helper.exe')
+const exe = process.argv[2] ?? path.join(__dirname, '..', 'resources', 'helper', 'gloop-voice-helper.exe')
 const child = spawn(exe, [], { stdio: ['pipe', 'pipe', 'inherit'] })
 const replies = new Map()
 readline.createInterface({ input: child.stdout }).on('line', (line) => {
@@ -60,7 +60,7 @@ const check = (name, ok, detail) => {
 }
 const skip = (name, reason) => console.log(`SKIP  ${name}\n      ${reason}`)
 
-const MARKER = 'Murmur window text check: the quick brown fox.'
+const MARKER = 'Gloop Voice window text check: the quick brown fox.'
 // A form of the test's own holding the marker in a RichEdit 5.0 control, which UI Automation exposes as a
 // Document with a TextPattern (the stock WinForms RichTextBox uses RichEdit 2.0, which it does not).
 const FIXTURE = [
@@ -69,15 +69,15 @@ const FIXTURE = [
   'using System;',
   'using System.Runtime.InteropServices;',
   'using System.Windows.Forms;',
-  'public class MurmurRichEdit50 : RichTextBox {',
+  'public class GloopVoiceRichEdit50 : RichTextBox {',
   '  [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern IntPtr LoadLibraryW(string name);',
   '  protected override CreateParams CreateParams {',
   '    get { LoadLibraryW("msftedit.dll"); CreateParams p = base.CreateParams; p.ClassName = "RICHEDIT50W"; return p; }',
   '  }',
   '}',
   "'@",
-  "$f = New-Object Windows.Forms.Form; $f.Text = 'Murmur window text check'; $f.Width = 520; $f.Height = 200; $f.TopMost = $true",
-  "$t = New-Object MurmurRichEdit50; $t.Dock = 'Fill'; $t.ReadOnly = $true; $t.Text = $env:MURMUR_MARKER",
+  "$f = New-Object Windows.Forms.Form; $f.Text = 'Gloop Voice window text check'; $f.Width = 520; $f.Height = 200; $f.TopMost = $true",
+  "$t = New-Object GloopVoiceRichEdit50; $t.Dock = 'Fill'; $t.ReadOnly = $true; $t.Text = $env:GLOOP_VOICE_MARKER",
   '$f.Controls.Add($t); $f.Add_Shown({ $f.Activate(); $t.Focus() })',
   '[Windows.Forms.Application]::Run($f)',
 ].join('\n')
@@ -89,7 +89,7 @@ async function ownWindowCheck() {
   const encoded = Buffer.from(FIXTURE, 'utf16le').toString('base64')
   const form = spawn(powershell, ['-NoProfile', '-NonInteractive', '-STA', '-EncodedCommand', encoded], {
     stdio: 'ignore',
-    env: { ...process.env, MURMUR_MARKER: MARKER },
+    env: { ...process.env, GLOOP_VOICE_MARKER: MARKER },
   })
   // Close our window however the run ends, including Ctrl+C.
   const killForm = () => {

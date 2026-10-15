@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
-using static Murmur.Helper.Native;
+using static GloopVoice.Helper.Native;
 
-namespace Murmur.Helper;
+namespace GloopVoice.Helper;
 
 internal sealed record ClipboardSnapshot(List<(uint Format, byte[] Data)> Items);
 

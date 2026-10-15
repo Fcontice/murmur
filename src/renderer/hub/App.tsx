@@ -40,7 +40,7 @@ export function App() {
           <span className="brand-mark" aria-hidden="true">
             <i /><i /><i /><i />
           </span>
-          Murmur
+          Gloop Voice
         </div>
         {PAGES.map((item) => (
           <button key={item.id} type="button" className={`nav-item ${page === item.id ? 'active' : ''}`} onClick={() => setPage(item.id)}>

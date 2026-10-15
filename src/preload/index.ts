@@ -72,5 +72,5 @@ const pill: PillApi = {
 
 // Each window only receives the surface it needs.
 const page = (globalThis as unknown as { location: { pathname: string } }).location.pathname
-if (page.endsWith('pill.html')) contextBridge.exposeInMainWorld('murmurPill', pill)
-else contextBridge.exposeInMainWorld('murmur', hub)
+if (page.endsWith('pill.html')) contextBridge.exposeInMainWorld('gloopVoicePill', pill)
+else contextBridge.exposeInMainWorld('gloopVoice', hub)

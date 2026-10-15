@@ -3,7 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
-namespace Murmur.Helper;
+namespace GloopVoice.Helper;
 
 /// <summary>
 /// Newline-delimited JSON over stdin/stdout. Writes are queued so the keyboard hook never blocks on the pipe.

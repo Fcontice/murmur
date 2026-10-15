@@ -11,7 +11,7 @@ function write(level: string, scope: string, message: string, detail?: unknown):
   if (level === 'ERROR') console.error(line.trimEnd())
   else console.log(line.trimEnd())
 
-  const file = userFile('logs', 'murmur.log')
+  const file = userFile('logs', 'gloop-voice.log')
   queue = queue
     .then(async () => {
       await mkdir(dirname(file), { recursive: true })

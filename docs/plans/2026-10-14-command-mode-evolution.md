@@ -20,7 +20,7 @@
 - No bare "search X" trigger and no "start X" trigger. They misroute writing commands ("search engines are…", "start with a greeting"). Search triggers: "search for", "search the web for", "search google for", "look up", "google". Open triggers: "open", "launch", "go to", "pull up".
 - "open X" only routes as an action when X is at most 6 words and doesn't start with "with"/"by" ("open with a joke about…" stays writing).
 - Spoken domains are normalised: "github dot com" → `github.com`.
-- `MURMUR_SELFTEST` is dev-only by design (`!app.isPackaged`). For the packaged build, the installed helper is checked with the helper test script, and the installed app gets a manual checklist (Task 15).
+- `GLOOP_VOICE_SELFTEST` is dev-only by design (`!app.isPackaged`). For the packaged build, the installed helper is checked with the helper test script, and the installed app gets a manual checklist (Task 15).
 
 ---
 
@@ -616,7 +616,7 @@ Add methods to `Database` after `deleteSnippet`, in the same style:
   }
 ```
 
-**Step 4: Run** `npx vitest run tests/data.test.ts`. Expected: PASS. Also add a migration test proving an existing version-1 database upgrades: create `new Database(file)` on a temp file, close, reopen, and check that `listCommands()` has 3 entries and `PRAGMA user_version` is 2. Use `mkdtempSync(join(tmpdir(), 'murmur-db-'))` and clean up in `finally`.
+**Step 4: Run** `npx vitest run tests/data.test.ts`. Expected: PASS. Also add a migration test proving an existing version-1 database upgrades: create `new Database(file)` on a temp file, close, reopen, and check that `listCommands()` has 3 entries and `PRAGMA user_version` is 2. Use `mkdtempSync(join(tmpdir(), 'gloop-voice-db-'))` and clean up in `finally`.
 
 **Step 5: Commit**
 ```
@@ -705,9 +705,9 @@ git commit -m "Give writing commands the window's text as reference"
 ### Task 6: Helper: listApps, launchApp, getWindowText
 
 **Files:**
-- Create: `helper/Murmur.Helper/AppsFolder.cs`
-- Create: `helper/Murmur.Helper/WindowText.cs`
-- Modify: `helper/Murmur.Helper/Program.cs` (`HandleSlow` switch)
+- Create: `helper/GloopVoice.Helper/AppsFolder.cs`
+- Create: `helper/GloopVoice.Helper/WindowText.cs`
+- Modify: `helper/GloopVoice.Helper/Program.cs` (`HandleSlow` switch)
 - Create: `scripts/helper-commands-test.cjs`
 - Modify: `package.json` scripts (`"test:helper": "node scripts/helper-commands-test.cjs"`)
 
@@ -719,7 +719,7 @@ const { execFileSync, spawn } = require('node:child_process')
 const path = require('node:path')
 const readline = require('node:readline')
 
-const exe = process.argv[2] ?? path.join(__dirname, '..', 'resources', 'helper', 'murmur-helper.exe')
+const exe = process.argv[2] ?? path.join(__dirname, '..', 'resources', 'helper', 'gloop-voice-helper.exe')
 const child = spawn(exe, [], { stdio: ['pipe', 'pipe', 'inherit'] })
 const replies = new Map()
 readline.createInterface({ input: child.stdout }).on('line', (line) => {
@@ -789,12 +789,12 @@ Add `"test:helper": "node scripts/helper-commands-test.cjs",` to `package.json` 
 
 **Step 2: Run** `npm run test:helper`. Expected: FAIL, `listApps` replies `unknown_request`.
 
-**Step 3: Implement** `helper/Murmur.Helper/AppsFolder.cs`:
+**Step 3: Implement** `helper/GloopVoice.Helper/AppsFolder.cs`:
 ```csharp
 using System.Diagnostics;
 using System.Text.Json.Nodes;
 
-namespace Murmur.Helper;
+namespace GloopVoice.Helper;
 
 /// <summary>
 /// The Windows "Apps" folder: what the Start menu lists, desktop and Store apps alike. Apps are launched
@@ -866,15 +866,15 @@ internal static class AppsFolder
 }
 ```
 
-`helper/Murmur.Helper/WindowText.cs`:
+`helper/GloopVoice.Helper/WindowText.cs`:
 ```csharp
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json.Nodes;
 using Interop.UIAutomationClient;
-using static Murmur.Helper.Native;
+using static GloopVoice.Helper.Native;
 
-namespace Murmur.Helper;
+namespace GloopVoice.Helper;
 
 /// <summary>
 /// Visible text of the foreground window for command mode ("reply to this", "summarize this"). Prefers the
@@ -1022,7 +1022,7 @@ In `Program.cs` `HandleSlow`, add before `case "testKeys"`:
 
 **Step 5: Commit**
 ```
-git add helper/Murmur.Helper scripts/helper-commands-test.cjs package.json
+git add helper/GloopVoice.Helper scripts/helper-commands-test.cjs package.json
 git commit -m "Helper: list and launch apps, read window text"
 ```
 
@@ -1507,7 +1507,7 @@ Check the existing `failed` rendering first and don't duplicate a badge.
 
 **Step 5: Verify.** `npm run typecheck` → PASS. Start the dev app with a scratch profile and screenshot the new page:
 ```
-$env:MURMUR_USER_DATA="$env:TEMP\murmur-ui-check"; npm run dev
+$env:GLOOP_VOICE_USER_DATA="$env:TEMP\murmur-ui-check"; npm run dev
 ```
 Check by hand: add, edit and delete a command; a reserved name ("Open X") shows the error; add a site with a bare domain (it's stored as https); an invalid address shows the error; switch the search engine and set a custom one without `{query}` (it shows the error and doesn't save). Close the dev app afterwards.
 
@@ -1678,12 +1678,12 @@ async function processIds(image: string): Promise<Set<number>> {
 ```
 The `.try` box lives on the Home page. If the summarize step finds the box missing because the page changed, navigate to Home first (`[...document.querySelectorAll('.nav-item')].find((b) => b.textContent === 'Home').click()`).
 
-**Step 4: Run the self-test** (dev build, scratch profile, Murmur in front while it runs; tell the user first because it takes focus for about a minute):
+**Step 4: Run the self-test** (dev build, scratch profile, Gloop Voice in front while it runs; tell the user first because it takes focus for about a minute):
 ```
 npm run build
-$env:MURMUR_USER_DATA="$env:TEMP\murmur-selftest-profile"; $env:MURMUR_SELFTEST="$env:TEMP\murmur-selftest"; npx electron .
+$env:GLOOP_VOICE_USER_DATA="$env:TEMP\murmur-selftest-profile"; $env:GLOOP_VOICE_SELFTEST="$env:TEMP\murmur-selftest"; npx electron .
 ```
-Expected: every step in `results.json` has `ok: true`. Read the screenshots (`hub-commands.png`, `hub-history-filled.png`). The scratch profile needs models: they live in `%LOCALAPPDATA%\Murmur\models`, which every profile shares, so nothing to download.
+Expected: every step in `results.json` has `ok: true`. Read the screenshots (`hub-commands.png`, `hub-history-filled.png`). The scratch profile needs models: they live in `%LOCALAPPDATA%\Gloop Voice\models`, which every profile shares, so nothing to download.
 
 **Step 5: Commit**
 ```
@@ -1718,11 +1718,11 @@ Then request a code review (superpowers:requesting-code-review) of the branch ag
 
 ### Task 15: Packaged build and install
 
-1. Quit the running Murmur first (tray → Quit). The installer can't replace files in use.
-2. `npm run dist`. Expected: `dist\Murmur Setup 0.1.0.exe`.
+1. Quit the running Gloop Voice first (tray → Quit). The installer can't replace files in use.
+2. `npm run dist`. Expected: `dist\Gloop Voice Setup 0.1.0.exe`.
 3. Confirm with the user before installing over their current copy. Then run the installer.
-4. `node scripts/helper-commands-test.cjs "$env:LOCALAPPDATA\Programs\murmur\resources\helper\murmur-helper.exe"`. Expected: all PASS, so the installed helper is the new one.
-5. Start the installed Murmur and check `%APPDATA%\Murmur\logs\murmur.log` for a clean start. Migration 2 must apply to the user's real database without errors. Verify: `node -e "const {DatabaseSync}=require('node:sqlite');const d=new DatabaseSync(process.env.APPDATA+'/Murmur/murmur.sqlite');console.log(d.prepare('PRAGMA user_version').get(), d.prepare('SELECT count(*) n FROM commands').get())"`. Expected: `user_version: 2`, `n: 3`. Existing history must be intact (`SELECT count(*) FROM history` unchanged from before install; record that count before step 3).
+4. `node scripts/helper-commands-test.cjs "$env:LOCALAPPDATA\Programs\murmur\resources\helper\gloop-voice-helper.exe"`. Expected: all PASS, so the installed helper is the new one.
+5. Start the installed Gloop Voice and check `%APPDATA%\Gloop Voice\logs\gloop-voice.log` for a clean start. Migration 2 must apply to the user's real database without errors. Verify: `node -e "const {DatabaseSync}=require('node:sqlite');const d=new DatabaseSync(process.env.APPDATA+'/Gloop Voice/gloop-voice.sqlite');console.log(d.prepare('PRAGMA user_version').get(), d.prepare('SELECT count(*) n FROM commands').get())"`. Expected: `user_version: 2`, `n: 3`. Existing history must be intact (`SELECT count(*) FROM history` unchanged from before install; record that count before step 3).
 6. Hand the user the manual checklist (physical keys can't be automated):
    - Ctrl + Win + Alt, "open Spotify" → Spotify opens, pill says "Opening Spotify".
    - "go to github dot com" → browser opens github.com.

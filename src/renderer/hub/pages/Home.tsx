@@ -3,7 +3,7 @@ import type { EngineStatus, HistoryEntry, Settings, Stats } from '@shared/types'
 import { Empty, Keys } from '../components'
 import { formatNumber } from '../hooks'
 
-const api = window.murmur
+const api = window.gloopVoice
 
 interface Props {
   settings: Settings
@@ -13,7 +13,7 @@ interface Props {
 
 function problems(status: EngineStatus): string[] {
   const list: string[] = []
-  if (status.helper === 'failed') list.push('The keyboard helper could not start, so shortcuts will not work. Restart Murmur.')
+  if (status.helper === 'failed') list.push('The keyboard helper could not start, so shortcuts will not work. Restart Gloop Voice.')
   if (status.asr === 'unavailable' || status.asr === 'failed') list.push(status.asrDetail || 'No speech model is ready.')
   if (status.llm === 'unavailable' || status.llm === 'failed') list.push(`${status.llmDetail || 'The language model is not ready.'} Dictation still works with basic clean-up.`)
   return list
